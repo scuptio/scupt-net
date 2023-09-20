@@ -1,0 +1,31 @@
+[lib]
+path = "src/lib.rs"
+
+[package]
+name = "scupt-net"
+version = "0.1.0"
+edition = "2021"
+
+[build]
+rustflags = ["--cfg", "tokio_unstable"]
+
+[dependencies]
+scupt-util = { git = "https://github.com/scuptio/scupt-util.git" }
+serde = { version = "1.0.188", features = ["derive", "rc"] }
+
+tokio = { version = "1.32.0", features = ["full", "tracing"] }
+tokio-util = { version = "0.7.8", features = ["codec"] }
+serde_json = { version = "1.0.107", features = ["std", "arbitrary_precision", "preserve_order"] }
+async-trait = "0.1.73"
+async_fn_traits = "0.1.1"
+byteorder = "1.4.3"
+bytes = "1.5.0"
+futures = "0.3.28"
+serde_bytes = "0.11.12"
+bincode = "2.0.0-rc.3"
+rand = "0.8.5"
+tracing = { version = "0.1.37" }
+console-subscriber = "0.1.10"
+async-backtrace = "0.2.6"
+
+
