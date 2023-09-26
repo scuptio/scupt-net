@@ -398,7 +398,11 @@ Node<
         addr: SocketAddr,
     ) -> Res<()> {
         trace!("accept new {}", addr.to_string());
-        let ep = Endpoint::new(socket, addr, OptEP::default());
+        let ep = Endpoint::new(
+            socket,
+            addr,
+            OptEP::default().enable_dtm_test(true)
+        );
         let on_accepted = {
             let h = handle.clone();
             async move {
