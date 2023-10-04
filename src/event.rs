@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -17,6 +18,7 @@ pub enum EventResult {
 pub type ResultSender = oneshot::Sender<EventResult>;
 pub type ResultReceiver = oneshot::Receiver<EventResult>;
 
+
 pub enum NetEvent<
     M: MsgTrait + 'static,
 > {
@@ -33,4 +35,26 @@ pub enum NetEvent<
     NewEventChannel(Arc<EventChannel<M>>),
 }
 
-
+impl <M:MsgTrait + 'static> Debug for NetEvent<M> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NetEvent::NetConnect { node_id, address, opt_sender, return_endpoint } => {
+                write!(f, "NetConnect({:?}, {:?}, opt_sender_not_none:{}, return_endpoint{})",
+                       node_id, address, opt_sender.is_some(), return_endpoint, )?;
+            }
+            NetEvent::NetListen(address, _) => {
+                write!(f, "NetListen({:?})", address)?;
+            }
+            NetEvent::NetSend(nid, m, _) => {
+                write!(f, "NetSend({:?}, {:?})", nid, m)?;
+            }
+            NetEvent::Stop(_) => {
+                write!(f, "Stop(_)")?;
+            }
+            NetEvent::NewEventChannel(_) => {
+                write!(f, "NewEventChannel(_)")?;
+            }
+        }
+        Ok(())
+    }
+}

@@ -114,7 +114,7 @@ impl<M: MsgTrait> EventSenderImpl<M> {
         match r_send {
             Ok(_) => { Ok(()) }
             Err(e) => {
-                error!("send event error {}", e.to_string());
+                error!("send event {:?}, error {}", &e.0, e.to_string());
                 Err(ET::TokioSenderError(e.to_string()))
             }
         }
