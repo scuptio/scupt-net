@@ -12,7 +12,7 @@ use scupt_util::node_id::NID;
 use scupt_util::res::Res;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, Mutex};
-use tracing::{debug, error, Instrument, trace, trace_span};
+use tracing::{error, Instrument, trace, trace_span};
 
 use crate::endpoint::Endpoint;
 use crate::event_sink_impl::EventSenderImpl;
@@ -41,7 +41,7 @@ pub struct NetHandler<M: MsgTrait> {
 #[async_trait]
 impl<M: MsgTrait> HandleEvent for NetHandler<M> {
     async fn on_accepted(&self, endpoint: Endpoint) -> Res<()> {
-        debug!("{} accept connection {}", self.name, endpoint.remote_address().to_string());
+        trace!("{} accept connection {}", self.name, endpoint.remote_address().to_string());
         let inner = self.inner.clone();
         spawn_cancelable_task(inner.stop_notify.clone(), "handle_message, ", async move {
             let _ = inner.process_message(endpoint).await;

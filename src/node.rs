@@ -9,7 +9,7 @@ use scupt_util::res_of::res_io;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::runtime::Runtime;
 use tokio::task::LocalSet;
-use tracing::{error, info, Instrument, trace, trace_span};
+use tracing::{error, trace, trace_span, Instrument};
 
 use crate::endpoint::Endpoint;
 use crate::event::{EventResult, NetEvent, ResultSender};
@@ -358,7 +358,7 @@ Node<
         let h = handle.clone();
         let notify = node.stop_notify();
         let future_accept_first = async move {
-            info!("bind address {}", address.to_string());
+            trace!("bind address {}", address.to_string());
             let r_bind = TcpListener::bind(address.to_string()).await;
             let listener = match res_io(r_bind) {
                 Ok(l) => {
