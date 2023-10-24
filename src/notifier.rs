@@ -64,9 +64,13 @@ impl Notifier {
         trace!("notify waiter {}", self.name);
         let ret = self.inner.notify_all();
         let inner = self.inner.clone();
-        let _ = task::Builder::default().spawn(async move {
+        let r = task::Builder::default().spawn(async move {
             inner.repeat_notify_until_no_waiting().await;
-        }).unwrap();
+        });
+        match r {
+            Ok(_j) => {}
+            Err(e) => { trace!("notify error {:?}", e); }
+        }
         ret
     }
 

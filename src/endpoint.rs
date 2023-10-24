@@ -11,7 +11,7 @@ use scupt_util::res::Res;
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio_util::codec::Framed;
-use tracing::{Instrument, trace_span};
+use tracing::{error, Instrument, trace_span};
 
 use crate::framed_codec::FramedCodec;
 use crate::opt_ep::OptEP;
@@ -99,7 +99,11 @@ fn parse_dtm_action_message<M:MsgTrait + 'static>(byte:&[u8]) -> Res<M> {
     let r = serde_json::from_str::<M>(string.as_str());
     match r {
         Ok(m) => { Ok(m)  }
-        Err(e) => { Err(ET::SerdeError(e.to_string())) }
+        Err(e) => {
+            error!("{}", e.to_string());
+            serde_json::from_str::<M>(string.as_str()).unwrap();
+            Err(ET::SerdeError(e.to_string()))
+        }
     }
 }
 
