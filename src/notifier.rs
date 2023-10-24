@@ -5,6 +5,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread;
 use std::time::Duration;
+use scupt_util::error_type::ET;
+use scupt_util::res::Res;
 
 use tokio::select;
 use tokio::sync::Notify;
@@ -212,4 +214,40 @@ pub fn spawn_cancelable_task<F>(stop_notify: Notifier, name: &str, future: F)
     let _ = task::Builder::default().name(name).spawn_local(async move {
         select_local_till_done(stop_notify, future).await
     }).unwrap();
+}
+
+
+pub async fn __select_local_till_done<F>(notify: Notifier, future: F) -> Option<F::Output>
+    where
+        F: Future + 'static,
+        F::Output: 'static,
+{
+    let future = async move {
+        let r = select! {
+            _ = notify.notified() => {
+            trace ! ("local task stop");
+                None
+            }
+            r = future => {
+                trace ! ("local task  end");
+                Some(r)
+            }
+        };
+        r
+    };
+    let opt = future.await;
+    opt
+}
+pub fn spawn_task<F>(cancel_notifier: Notifier, name: &str, future: F) -> Res<JoinHandle<Option<F::Output>>>
+    where
+        F: Future + 'static,
+        F::Output: 'static,
+{
+    let r = task::Builder::default().name(name).spawn_local(async move {
+        __select_local_till_done(cancel_notifier, future).await
+    });
+    match r {
+        Ok(f) => Ok(f),
+        Err(e) => Err(ET::FatalError(e.to_string()))
+    }
 }
