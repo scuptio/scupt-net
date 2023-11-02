@@ -44,7 +44,7 @@ impl<M: MsgTrait> HandleEvent for NetHandler<M> {
         trace!("{} accept connection {}", self.name, endpoint.remote_address().to_string());
         let inner = self.inner.clone();
         spawn_cancelable_task(inner.stop_notify.clone(), "handle_message, ", async move {
-            let _ = inner.process_message(endpoint).await;
+            let _r = inner.process_message(endpoint).await;
         });
         Ok(())
     }
@@ -160,8 +160,11 @@ impl<M: MsgTrait> InnerNetHandler<M> {
                         trace!("connection eof");
                         return Err(ET::StopService);
                     }
-                    _ => { self.error(e); }
+                    _ => {
+                        self.error(e);
+                    }
                 }
+                let _ = ep.close().await;
             }
         }
         Ok(())
