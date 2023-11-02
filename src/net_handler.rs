@@ -151,7 +151,6 @@ impl<M: MsgTrait> InnerNetHandler<M> {
     ) -> Res<()> {
         let r = self.loop_handle_message(&ep)
             .instrument(trace_span!("loop handle message")).await;
-
         match r {
             Ok(()) => {}
             Err(e) => {
@@ -164,9 +163,9 @@ impl<M: MsgTrait> InnerNetHandler<M> {
                         self.error(e);
                     }
                 }
-                let _ = ep.close().await;
             }
         }
+        let _ = ep.close().await;
         Ok(())
     }
 
