@@ -7,6 +7,7 @@ use futures::{SinkExt, StreamExt};
 use scupt_util::error_type::ET;
 use scupt_util::message::{decode_message, encode_message, MsgTrait};
 use scupt_util::res::Res;
+use scupt_util::res_of::res_io;
 
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
@@ -89,7 +90,11 @@ impl _Endpoint {
         }
     }
 
-
+    async fn close(&self) -> Res<()> {
+        let mut f = self.framed.lock().await;
+        let r = f.close().await;
+        res_io(r)
+    }
 }
 
 
@@ -124,5 +129,9 @@ impl Endpoint {
 
     pub fn remote_address(&self) -> SocketAddr {
         self._ep.remote_address()
+    }
+
+    pub async fn close(&self) -> Res<()> {
+        self._ep.close().await
     }
 }
