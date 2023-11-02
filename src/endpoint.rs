@@ -71,7 +71,7 @@ impl _Endpoint {
         let opt = framed.next().await;
         let r = match opt {
             Some(r) => { r }
-            None => { return Err(ET::StopService); }
+            None => { return Err(ET::EOF); }
         };
         let b = match r {
             Ok(b) => { b }
