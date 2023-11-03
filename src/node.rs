@@ -145,7 +145,7 @@ Node<
                         Ok(_) => {}
                         Err(e) => {
                             match e {
-                                ET::StopService => {
+                                ET::EOF => {
                                     break;
                                 }
                                 _ => { error!("{}", e.to_string()); }
@@ -215,7 +215,7 @@ Node<
                     handle.on_stop().await;
                     Self::handle_opt_send_result(EventResult::ErrorType(ET::OK), opt_s);
                 });
-                return Err(ET::StopService);
+                return Err(ET::EOF);
             }
             NetEvent::NewEventChannel(ch) => {
                 Self::handle_new_event_channel(
@@ -410,7 +410,7 @@ Node<
                     Ok(_) => {}
                     Err(e) => {
                         match e {
-                            ET::StopService => {
+                            ET::EOF => {
                                 trace!("connection eof")
                             }
                             _ => { h.on_error(e).await; }
@@ -431,7 +431,7 @@ Node<
                 ).await {
                     Err(e) => {
                         match e {
-                            ET::StopService => {
+                            ET::EOF => {
                                 return;
                             }
                             _ => {

@@ -155,9 +155,9 @@ impl<M: MsgTrait> InnerNetHandler<M> {
             Ok(()) => {}
             Err(e) => {
                 match e {
-                    ET::StopService => {
+                    ET::EOF => {
                         trace!("connection eof");
-                        return Err(ET::StopService);
+                        return Err(ET::EOF);
                     }
                     _ => {
                         self.error(e);
@@ -180,7 +180,7 @@ impl<M: MsgTrait> InnerNetHandler<M> {
                 Ok(()) => {}
                 Err(e) => {
                     match e {
-                        ET::StopService => {
+                        ET::EOF => {
                             trace!("connection eof")
                         }
                         _ => { self.error(e.clone()); }
