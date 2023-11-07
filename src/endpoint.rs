@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
+use futures::stream::{SplitSink, SplitStream};
 use scupt_util::error_type::ET;
 use scupt_util::message::{decode_message, encode_message, MsgTrait};
 use scupt_util::res::Res;
@@ -19,10 +20,9 @@ use crate::opt_ep::OptEP;
 use crate::serde_json_string::ActionSerdeJsonString;
 
 
-type FramedStream = Framed<TcpStream, FramedCodec>;
-
 struct _Endpoint {
-    framed: Mutex<FramedStream>,
+    sender:Mutex<SplitSink<Framed<TcpStream, FramedCodec>, BytesMut>>,
+    receiver:Mutex<SplitStream<Framed<TcpStream, FramedCodec>>>,
     remote_address: SocketAddr,
     // is enable DTM testing, default is false
     // when this option was enabling, the incoming message would be parse as ActionMessage
@@ -42,8 +42,10 @@ impl _Endpoint {
             stream,
             FramedCodec::new()
         );
+        let (s, r) = framed.split();
         Self {
-            framed: Mutex::new(framed),
+            sender: Mutex::new(s),
+            receiver : Mutex::new(r),
             remote_address: address,
             enable_dtm_test
         }
@@ -57,8 +59,8 @@ impl _Endpoint {
     async fn send<M: MsgTrait + 'static>(&self, m: M) -> Res<()> {
         let vec = encode_message(m)?;
         let bytes = BytesMut::from(vec.as_slice());
-        let mut framed = self.framed.lock().await;
-        let r = framed.send(bytes).await;
+        let mut sink = self.sender.lock().await;
+        let r = sink.send(bytes).await;
         match r {
             Ok(_) => { Ok(()) }
             Err(_e) => { Err(ET::TokioSenderError("send network message error".to_string())) }
@@ -67,8 +69,8 @@ impl _Endpoint {
 
     // receive a message
     async fn recv<M: MsgTrait + 'static>(&self) -> Res<M> {
-        let mut framed = self.framed.lock().instrument(trace_span!("lock")).await;
-        let opt = framed.next().await;
+        let mut stream = self.receiver.lock().instrument(trace_span!("lock")).await;
+        let opt = stream.next().await;
         let r = match opt {
             Some(r) => { r }
             None => { return Err(ET::EOF); }
@@ -91,9 +93,12 @@ impl _Endpoint {
     }
 
     async fn close(&self) -> Res<()> {
-        let mut f = self.framed.lock().await;
-        let r = f.close().await;
-        res_io(r)
+        let r1 = {
+            let mut sink = self.sender.lock().await;
+            sink.close().await
+        };
+        res_io(r1)?;
+        Ok(())
     }
 }
 
