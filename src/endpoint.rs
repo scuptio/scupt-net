@@ -105,8 +105,7 @@ fn parse_dtm_action_message<M:MsgTrait + 'static>(byte:&[u8]) -> Res<M> {
     match r {
         Ok(m) => { Ok(m)  }
         Err(e) => {
-            error!("{}", e.to_string());
-            serde_json::from_str::<M>(string.as_str()).unwrap();
+            error!("parse DTM action message error: {}, json:{}", e.to_string(), string);
             Err(ET::SerdeError(e.to_string()))
         }
     }
