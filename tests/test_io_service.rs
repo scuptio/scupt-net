@@ -34,13 +34,18 @@ Debug,
 Serialize,
 Deserialize,
 Decode,
-Encode,
+Encode
 )]
 enum TestMsg {
     Id(u32),
     Stop(NID),
 }
 
+impl Default for TestMsg {
+    fn default() -> Self {
+        Self::Id(0)
+    }
+}
 impl MsgTrait for TestMsg {}
 
 #[test]

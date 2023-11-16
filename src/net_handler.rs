@@ -217,6 +217,7 @@ Serialize,
 Deserialize,
 Decode,
 Encode,
+Default
 )]
 struct TestMsg {}
 

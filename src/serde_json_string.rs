@@ -23,6 +23,7 @@ Debug,
 Deserialize,
 Decode,
 Encode,
+Default
 )]
 pub struct ActionSerdeJsonString {
     string: String,
