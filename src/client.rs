@@ -52,6 +52,14 @@ impl <M:MsgTrait +'static> Client<M> {
     pub async fn recv(&self) -> Res<M> {
         self.inner.recv().await
     }
+
+    pub fn node_id(&self) -> NID {
+        self.inner.nid
+    }
+
+    pub fn server_addr(&self) -> String {
+        self.inner.addr.clone()
+    }
 }
 
 impl Handler {
@@ -61,8 +69,8 @@ impl Handler {
 }
 
 pub struct OptClientConnect {
-    retry_max:u64,
-    retry_wait_ms:u64
+    pub retry_max:u64,
+    pub retry_wait_ms:u64
 }
 
 impl OptClientConnect {
