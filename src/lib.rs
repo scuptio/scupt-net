@@ -28,5 +28,6 @@ pub mod message_sender_dummy;
 pub mod opt_send;
 mod opt_ep;
 pub mod serde_json_string;
+pub mod client;
 
 
