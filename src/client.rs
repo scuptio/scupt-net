@@ -9,6 +9,7 @@ use scupt_util::message::MsgTrait;
 use async_trait::async_trait;
 use scupt_util::error_type::ET;
 use scupt_util::node_id::NID;
+use tokio::task::LocalSet;
 use tokio::time::sleep;
 
 
@@ -39,6 +40,10 @@ impl <M:MsgTrait +'static> Client<M> {
         Ok(Self {
             inner:Arc::new(ClientInner::new(node_id, name, addr)?)
         })
+    }
+
+    pub async fn run(&self, local:&LocalSet) {
+        self.inner.run(local);
     }
 
     pub async fn connect(&self, opt:OptClientConnect) -> Res<()> {
@@ -98,6 +103,10 @@ impl <M:MsgTrait +'static> ClientInner<M> {
             opt_endpoint: Default::default(),
         };
         Ok(r)
+    }
+
+    pub fn run(&self, local:&LocalSet) {
+        self.node.run_local(local);
     }
 
     pub async fn connect(&self, opt:OptClientConnect) -> Res<()> {
