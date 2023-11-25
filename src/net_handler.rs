@@ -19,7 +19,7 @@ use crate::event_sink_impl::EventSenderImpl;
 use crate::handle_event::HandleEvent;
 use crate::message_channel::MessageChSender;
 use crate::message_receiver::MessageReceiver;
-use crate::message_receiver_impl::MessageReceiverImpl;
+use crate::message_receiver_channel::MessageReceiverChannel;
 use crate::notifier::{Notifier, spawn_cancelable_task};
 
 pub type NodeSender<MsgTrait> = EventSenderImpl<MsgTrait>;
@@ -106,7 +106,7 @@ impl<M: MsgTrait> InnerNetHandler<M> {
         let mut message_receiver: Vec<Arc<dyn MessageReceiver<M>>> = vec![];
         for _ in 0..num_message_receiver {
             let (s, r) = mpsc::unbounded_channel::<M>();
-            let receiver = MessageReceiverImpl::new(Arc::new(Mutex::new(r)));
+            let receiver = MessageReceiverChannel::new(Arc::new(Mutex::new(r)));
             message_receiver.push(Arc::new(receiver));
             message_ch_sender.push(Arc::new(s));
         }

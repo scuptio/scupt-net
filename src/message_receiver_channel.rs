@@ -9,11 +9,11 @@ use tokio::sync::Mutex;
 use crate::message_channel::MessageChReceiver;
 use crate::message_receiver::MessageReceiver;
 
-pub struct MessageReceiverImpl<M: MsgTrait + 'static> {
+pub struct MessageReceiverChannel<M: MsgTrait + 'static> {
     receiver: Arc<Mutex<MessageChReceiver<M>>>,
 }
 
-impl<M: MsgTrait + 'static> MessageReceiverImpl<M> {
+impl<M: MsgTrait + 'static> MessageReceiverChannel<M> {
     pub(crate) fn new(receiver: Arc<Mutex<MessageChReceiver<M>>>) -> Self {
         Self {
             receiver
@@ -21,7 +21,7 @@ impl<M: MsgTrait + 'static> MessageReceiverImpl<M> {
     }
 }
 
-impl<M: MsgTrait + 'static> Clone for MessageReceiverImpl<M> {
+impl<M: MsgTrait + 'static> Clone for MessageReceiverChannel<M> {
     fn clone(&self) -> Self {
         Self {
             receiver: self.receiver.clone(),
@@ -30,7 +30,7 @@ impl<M: MsgTrait + 'static> Clone for MessageReceiverImpl<M> {
 }
 
 #[async_trait]
-impl<M: MsgTrait + 'static> MessageReceiver<M> for MessageReceiverImpl<M> {
+impl<M: MsgTrait + 'static> MessageReceiver<M> for MessageReceiverChannel<M> {
     async fn receive(&self) -> Res<M> {
         let mut guard = self.receiver.lock().await;
         let opt = guard.recv().await;

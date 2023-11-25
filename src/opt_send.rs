@@ -1,7 +1,6 @@
 
 pub struct OptSend {
-    no_wait: bool,
-
+    no_wait: bool
 }
 
 
@@ -9,7 +8,7 @@ pub struct OptSend {
 impl OptSend {
     pub fn new() -> Self {
         Self {
-            no_wait: false,
+            no_wait: false
         }
     }
 
@@ -22,8 +21,6 @@ impl OptSend {
         s.no_wait = no_wait;
         s
     }
-
-
 }
 
 impl Default for OptSend {

@@ -335,7 +335,7 @@ Node<
         };
         let er = if return_endpoint {
             match result {
-                Ok(ep) => { EventResult::NetEndpoint(ep) }
+                Ok(ep) => { EventResult::NetEndpoint(Ok(ep)) }
                 Err(e) => {
                     EventResult::ErrorType(e)
                 }

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use scupt_util::error_type::ET;
 use scupt_util::message::MsgTrait;
 use scupt_util::node_id::NID;
+use scupt_util::res::Res;
 use tokio::sync::oneshot;
 
 use crate::endpoint::Endpoint;
@@ -12,7 +13,7 @@ use crate::event_channel::EventChannel;
 
 pub enum EventResult {
     ErrorType(ET),
-    NetEndpoint(Endpoint),
+    NetEndpoint(Res<Endpoint>),
 }
 
 pub type ResultSender = oneshot::Sender<EventResult>;

@@ -16,7 +16,7 @@ mod framed_codec;
 mod framed_header;
 mod net_handler;
 mod node_context;
-mod message_receiver_impl;
+mod message_receiver_channel;
 mod message_channel;
 
 mod event_channel;
@@ -24,10 +24,11 @@ mod event_channel;
 pub mod notifier;
 pub mod message_incoming;
 pub mod message_incoming_dummy;
-pub mod message_sender_dummy;
+
 pub mod opt_send;
 mod opt_ep;
 pub mod serde_json_string;
 pub mod client;
+pub mod message_receiver_endpoint;
 
 
