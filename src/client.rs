@@ -42,7 +42,7 @@ impl <M:MsgTrait +'static> Client<M> {
         })
     }
 
-    pub async fn run(&self, local:&LocalSet) {
+    pub fn run(&self, local:&LocalSet) {
         self.inner.run(local);
     }
 
