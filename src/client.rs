@@ -125,7 +125,9 @@ impl <M:MsgTrait +'static> ClientInner<M> {
             } else {
                 sleep(Duration::from_millis(opt.retry_wait_ms)).await;
             }
-            n -= 1;
+            if n > 0 {
+                n -= 1;
+            }
         };
 
         if let Some(e) = opt_ep {
