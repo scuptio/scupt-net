@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use scupt_util::error_type::ET;
@@ -12,7 +13,7 @@ use tracing::{error, trace};
 use crate::endpoint::Endpoint;
 use crate::event::{EventResult, NetEvent, ResultReceiver};
 use crate::event_sink::{ESConnectOpt, ESServeOpt, ESStopOpt, EventSink};
-use crate::message_receiver::ReceiverOneshot;
+use crate::message_receiver::ReceiverResp;
 use crate::message_sender::{Sender, SenderRR};
 use crate::message_receiver_endpoint::MessageReceiverEndpoint;
 
@@ -91,7 +92,7 @@ impl<M: MsgTrait> EventSenderImpl<M> {
         msg: Message<M>,
         no_wait: bool,
         read_resp: bool
-    ) -> Res<Option<Box<dyn ReceiverOneshot<M>>>> {
+    ) -> Res<Option<Arc<dyn ReceiverResp<M>>>> {
         trace!("channel name {} send message {:?}", self.name, msg);
         if no_wait && !read_resp {
             let event = NetEvent::NetSend(msg, None);
@@ -105,7 +106,7 @@ impl<M: MsgTrait> EventSenderImpl<M> {
             let opt_ep = self.event_result_endpoint(event_result)?;
             match opt_ep {
                 Some(ep) => {
-                    Ok(Some(Box::new(MessageReceiverEndpoint::new(ep))))
+                    Ok(Some(Arc::new(MessageReceiverEndpoint::new(ep))))
                 }
                 None => {
                     Ok(None)
@@ -226,7 +227,7 @@ impl<
 impl<
     M: MsgTrait + 'static,
 > SenderRR<M> for EventSenderImpl<M> {
-    async fn send(&self, message: Message<M>, _opt: OptSend) -> Res<Box<dyn ReceiverOneshot<M>>> {
+    async fn send(&self, message: Message<M>, _opt: OptSend) -> Res<Arc<dyn ReceiverResp<M>>> {
         let opt = self.async_send(message, _opt.is_enable_no_wait(), true).await?;
         match opt {
             Some(recv) => { Ok(recv) }

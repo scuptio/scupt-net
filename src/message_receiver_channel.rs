@@ -9,7 +9,7 @@ use crate::endpoint::Endpoint;
 
 use crate::message_channel::MessageChReceiver;
 use crate::message_receiver::{Receiver, ReceiverRR};
-use crate::message_sender::SenderOneshot;
+use crate::message_sender::SenderResp;
 use crate::message_sender_endpoint::MessageSenderEndpoint;
 
 pub struct MessageReceiverChannel<M: MsgTrait + 'static> {
@@ -49,13 +49,13 @@ impl<M: MsgTrait + 'static> Receiver<M> for MessageReceiverChannel<M> {
 
 #[async_trait]
 impl<M: MsgTrait + 'static> ReceiverRR<M> for MessageReceiverChannel<M> {
-    async fn receive(&self) -> Res<(Message<M>, Box<dyn SenderOneshot<M>>)> {
+    async fn receive(&self) -> Res<(Message<M>, Arc<dyn SenderResp<M>>)> {
         let mut guard = self.receiver.lock().await;
         let opt = guard.recv().await;
         match opt {
             Some((message, ep)) => {
                 Ok((message,
-                    Box::new(MessageSenderEndpoint::new(ep)))) }
+                    Arc::new(MessageSenderEndpoint::new(ep)))) }
             None => {
                 // the sender is closed
                 Err(ET::EOF)

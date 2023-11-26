@@ -1,7 +1,8 @@
+use std::sync::Arc;
 use async_trait::async_trait;
 use scupt_util::message::{Message, MsgTrait};
 use scupt_util::res::Res;
-use crate::message_sender::SenderOneshot;
+use crate::message_sender::SenderResp;
 
 #[async_trait]
 pub trait Receiver<
@@ -12,10 +13,10 @@ pub trait Receiver<
 
 
 #[async_trait]
-pub trait ReceiverOneshot<
+pub trait ReceiverResp<
     M: MsgTrait + 'static,
 >: Sync + Send {
-    async fn receive(self) -> Res<Message<M>>;
+    async fn receive(&self) -> Res<Message<M>>;
 }
 
 
@@ -23,5 +24,5 @@ pub trait ReceiverOneshot<
 pub trait ReceiverRR<
     M: MsgTrait + 'static,
 >: Sync + Send {
-    async fn receive(&self) -> Res<(Message<M>, Box<dyn SenderOneshot<M>>)>;
+    async fn receive(&self) -> Res<(Message<M>, Arc<dyn SenderResp<M>>)>;
 }
