@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 
 use async_trait::async_trait;
 use scupt_util::error_type::ET;
+use scupt_util::error_type::ET::NoneOption;
 use scupt_util::message::{Message, MsgTrait};
 use scupt_util::node_id::NID;
 use scupt_util::res::Res;
@@ -12,7 +13,7 @@ use crate::endpoint::Endpoint;
 use crate::event::{EventResult, NetEvent, ResultReceiver};
 use crate::event_sink::{ESConnectOpt, ESServeOpt, ESStopOpt, EventSink};
 use crate::message_receiver::ReceiverOneshot;
-use crate::message_sender::Sender;
+use crate::message_sender::{Sender, SenderRR};
 use crate::message_receiver_endpoint::MessageReceiverEndpoint;
 
 use crate::opt_send::OptSend;
@@ -219,6 +220,17 @@ impl<
         let _ = self.async_send(message, opt.is_enable_no_wait(), false).await?;
         Ok(())
     }
-
 }
 
+#[async_trait]
+impl<
+    M: MsgTrait + 'static,
+> SenderRR<M> for EventSenderImpl<M> {
+    async fn send(&self, message: Message<M>, _opt: OptSend) -> Res<Box<dyn ReceiverOneshot<M>>> {
+        let opt = self.async_send(message, _opt.is_enable_no_wait(), true).await?;
+        match opt {
+            Some(recv) => { Ok(recv) }
+            None => { return Err(NoneOption) }
+        }
+    }
+}

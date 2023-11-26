@@ -13,9 +13,7 @@ use tracing::{Instrument, trace, trace_span};
 use crate::endpoint::Endpoint;
 use crate::event::NetEvent;
 use crate::event_channel::EventChannel;
-use crate::event_sink::EventSink;
-use crate::event_sink_impl::EventSenderImpl;
-use crate::message_sender::Sender;
+use crate::net_handler::NodeSender;
 use crate::notifier::Notifier;
 
 pub type EventChannelMap<MsgTrait> = HashMap<String, Arc<EventChannel<MsgTrait>>>;
@@ -85,14 +83,14 @@ impl<M: MsgTrait + 'static> NodeContext<M> {
         c.add_endpoint(node_id, endpoint)
     }
 
-    pub fn new_event_channel(&self, name: String) -> Res<Arc<dyn EventSink>> {
+    pub fn new_event_channel(&self, name: String) -> Res<Arc<NodeSender<M>>> {
         let (n, s) = self.new_event_sender(name)?;
-        Ok(Arc::new(EventSenderImpl::new(n, s)))
+        Ok(Arc::new(NodeSender::new(n, s)))
     }
 
-    pub fn new_message_sender(&self, name: String) -> Res<Arc<dyn Sender<M>>> {
+    pub fn new_message_sender(&self, name: String) -> Res<Arc<NodeSender<M>>> {
         let (n, s) = self.new_event_sender(name)?;
-        Ok(Arc::new(EventSenderImpl::new(n, s)))
+        Ok(Arc::new(NodeSender::new(n, s)))
     }
 
     pub fn new_event_sender(&self, name: String) -> Res<(String, mpsc::UnboundedSender<NetEvent<M>>)> {

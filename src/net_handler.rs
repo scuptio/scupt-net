@@ -18,7 +18,6 @@ use crate::endpoint::Endpoint;
 use crate::event_sink_impl::EventSenderImpl;
 use crate::handle_event::HandleEvent;
 use crate::message_channel::MessageChSender;
-use crate::message_receiver::Receiver;
 use crate::message_receiver_channel::MessageReceiverChannel;
 use crate::notifier::{Notifier, spawn_cancelable_task};
 
@@ -28,7 +27,7 @@ pub type NodeSender<MsgTrait> = EventSenderImpl<MsgTrait>;
 pub struct InnerNetHandler<M: MsgTrait> {
     _node_id: NID,
     message_ch_sender: Mutex<Vec<Arc<MessageChSender<(Message<M>, Endpoint)>>>>,
-    message_receiver: Vec<Arc<dyn Receiver<M>>>,
+    message_receiver: Vec<Arc<MessageReceiverChannel<M>>>,
     stop_notify: Notifier,
 }
 
@@ -84,11 +83,14 @@ impl<M: MsgTrait> NetHandler<M> {
     ) -> Self {
         Self {
             name,
-            inner: Arc::new(InnerNetHandler::new(node_id, num_message_receiver, stop_notify)),
+            inner: Arc::new(InnerNetHandler::new(
+                node_id,
+                num_message_receiver,
+                stop_notify)),
         }
     }
 
-    pub fn message_receiver(&self) -> Vec<Arc<dyn Receiver<M>>> {
+    pub fn message_receiver(&self) -> Vec<Arc<MessageReceiverChannel<M>>> {
         self.inner.message_receiver()
     }
 }
@@ -103,11 +105,12 @@ impl<M: MsgTrait> InnerNetHandler<M> {
             panic!("cannot 0 message receiver");
         }
         let mut message_ch_sender = vec![];
-        let mut message_receiver: Vec<Arc<dyn Receiver<M>>> = vec![];
+        let mut message_receiver: Vec<Arc<MessageReceiverChannel<M>>> = vec![];
         for _ in 0..num_message_receiver {
             let (s, r) = mpsc::unbounded_channel::<(Message<M>, Endpoint)>();
             let receiver = MessageReceiverChannel::new(Arc::new(Mutex::new(r)));
-            message_receiver.push(Arc::new(receiver));
+            let r =  Arc::new(receiver);
+            message_receiver.push(r.clone());
             message_ch_sender.push(Arc::new(s));
         }
 
@@ -120,9 +123,10 @@ impl<M: MsgTrait> InnerNetHandler<M> {
         s
     }
 
-    fn message_receiver(&self) -> Vec<Arc<dyn Receiver<M>>> {
+    fn message_receiver(&self) -> Vec<Arc<MessageReceiverChannel<M>>> {
         self.message_receiver.clone()
     }
+
 
     async fn receiver_message(&self, message: Message<M>, ep:Endpoint) -> Res<()> {
         let mut hasher = DefaultHasher::new();

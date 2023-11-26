@@ -16,7 +16,7 @@ use crate::event::{EventResult, NetEvent, ResultSender};
 use crate::event_channel::EventReceiver;
 use crate::event_sink::EventSink;
 use crate::handle_event::HandleEvent;
-use crate::message_sender::Sender;
+use crate::message_sender::{Sender, SenderRR};
 use crate::net_handler::NodeSender;
 use crate::node_context::NodeContext;
 use crate::notifier::{Notifier, spawn_cancelable_task, spawn_cancelable_task_local_set};
@@ -73,10 +73,17 @@ Node<
     }
 
     pub fn new_event_channel(&self, name: String) -> Res<Arc<dyn EventSink>> {
-        self.node_context.new_event_channel(name)
+        let r = self.node_context.new_event_channel(name)?;
+        Ok(r)
     }
     pub fn new_message_sender(&self, name: String) -> Res<Arc<dyn Sender<M>>> {
-        self.node_context.new_message_sender(name)
+        let s = self.node_context.new_message_sender(name)?;
+        Ok(s)
+    }
+
+    pub fn new_message_sender_rr(&self, name: String) -> Res<Arc<dyn SenderRR<M>>> {
+        let s = self.node_context.new_message_sender(name)?;
+        Ok(s)
     }
 
     pub fn stop_notify(&self) -> Notifier {
@@ -88,6 +95,10 @@ Node<
     }
 
     pub fn default_message_sender(&self) -> Arc<dyn Sender<M>> {
+        Arc::new(self.node_event_sender())
+    }
+
+    pub fn default_message_sender_rr(&self) -> Arc<dyn SenderRR<M>> {
         Arc::new(self.node_event_sender())
     }
 

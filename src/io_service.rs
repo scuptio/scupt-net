@@ -7,8 +7,9 @@ use tokio::runtime::Runtime;
 use tokio::task::LocalSet;
 
 use crate::event_sink::EventSink;
-use crate::message_receiver::Receiver;
-use crate::message_sender::Sender;
+use crate::message_receiver::{Receiver, ReceiverRR};
+use crate::message_receiver_channel::MessageReceiverChannel;
+use crate::message_sender::{Sender, SenderRR};
 use crate::net_handler::NetHandler;
 use crate::node::Node;
 use crate::notifier::Notifier;
@@ -21,19 +22,24 @@ type ServiceNode<M> = Node<
 pub struct IOService<M: MsgTrait> {
     node_id: NID,
     node: ServiceNode<M>,
-    receivers: Vec<Arc<dyn Receiver<M>>>,
+    receiver: Vec<Arc<MessageReceiverChannel<M>>>
 }
 
+
+pub struct IOServiceOpt {
+    pub num_message_receiver: u32
+}
 
 impl<M: MsgTrait> IOService<M> {
     pub fn new(node_id: NID,
                name: String,
-               num_message_receiver: u32,
+               opt: IOServiceOpt,
                stop_notify: Notifier,
     ) -> Res<Self> {
         let handler = NetHandler::<M>::new(node_id.clone(),
                                            name.clone(),
-                                           num_message_receiver, stop_notify.clone());
+                                           opt.num_message_receiver,
+                                           stop_notify.clone());
         let receivers = handler.message_receiver();
         let node = ServiceNode::new(
             node_id.clone(),
@@ -44,7 +50,7 @@ impl<M: MsgTrait> IOService<M> {
         let s = Self {
             node_id,
             node,
-            receivers,
+            receiver: receivers
         };
         Ok(s)
     }
@@ -82,11 +88,33 @@ impl<M: MsgTrait> IOService<M> {
         self.node.new_message_sender(name)
     }
 
-    pub fn message_receivers(&self) -> Vec<Arc<dyn Receiver<M>>> {
-        if self.receivers.is_empty() {
+
+    pub fn default_message_sender_rr(&self) -> Arc<dyn SenderRR<M>> {
+        self.node.default_message_sender_rr()
+    }
+
+    pub fn new_message_sender_rr(&self, name: String) -> Res<Arc<dyn SenderRR<M>>> {
+        self.node.new_message_sender_rr(name)
+    }
+
+    pub fn message_receiver(&self) -> Vec<Arc<dyn Receiver<M>>> {
+        if self.receiver.is_empty() {
             panic!("todo");
         }
-        self.receivers.clone()
+        self.receiver.iter().map(|r| {
+            let m : Arc<dyn Receiver<M>> = r.clone();
+            m
+        }).collect()
+    }
+
+    pub fn message_receiver_rr(&self) -> Vec<Arc<dyn ReceiverRR<M>>> {
+        if self.receiver.is_empty() {
+            panic!("todo");
+        }
+        self.receiver.iter().map(|r| {
+            let m : Arc<dyn ReceiverRR<M>> = r.clone();
+            m
+        }).collect()
     }
 }
 

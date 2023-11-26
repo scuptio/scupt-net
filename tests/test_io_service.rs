@@ -19,7 +19,7 @@ use tokio::time;
 use tracing::{error, trace};
 
 use scupt_net::event_sink::{ESConnectOpt, ESServeOpt, ESStopOpt, EventSink};
-use scupt_net::io_service::IOService;
+use scupt_net::io_service::{IOService, IOServiceOpt};
 use scupt_net::message_receiver::Receiver;
 use scupt_net::message_sender::Sender;
 use scupt_net::notifier::Notifier;
@@ -69,7 +69,10 @@ fn test_service(
     }
     for (k, _) in &id2address {
         let name = format!("service_{}", k);
-        let s = IOService::<TestMsg>::new(k.clone(), name, num_message_receiver, Notifier::new())?;
+        let opt = IOServiceOpt {
+            num_message_receiver
+        };
+        let s = IOService::<TestMsg>::new(k.clone(), name, opt,  Notifier::new())?;
         services.push(Arc::new(s));
     }
     let (stop_s, stop_receiver) = mpsc::unbounded_channel::<NID>();
@@ -113,7 +116,7 @@ fn test_service(
         }
 
         {
-            let receivers = service.message_receivers();
+            let receivers = service.message_receiver();
             for (i, recv) in receivers.iter().enumerate() {
                 let r = recv.clone();
                 let stop_sender = stop_s.clone();
