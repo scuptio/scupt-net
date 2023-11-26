@@ -7,8 +7,8 @@ use tokio::runtime::Runtime;
 use tokio::task::LocalSet;
 
 use crate::event_sink::EventSink;
-use crate::message_receiver::MessageReceiver;
-use crate::message_sender::MessageSender;
+use crate::message_receiver::Receiver;
+use crate::message_sender::Sender;
 use crate::net_handler::NetHandler;
 use crate::node::Node;
 use crate::notifier::Notifier;
@@ -21,7 +21,7 @@ type ServiceNode<M> = Node<
 pub struct IOService<M: MsgTrait> {
     node_id: NID,
     node: ServiceNode<M>,
-    receivers: Vec<Arc<dyn MessageReceiver<M>>>,
+    receivers: Vec<Arc<dyn Receiver<M>>>,
 }
 
 
@@ -74,15 +74,15 @@ impl<M: MsgTrait> IOService<M> {
         self.node.default_event_sink()
     }
 
-    pub fn default_message_sender(&self) -> Arc<dyn MessageSender<M>> {
+    pub fn default_message_sender(&self) -> Arc<dyn Sender<M>> {
         self.node.default_message_sender()
     }
 
-    pub fn new_message_sender(&self, name: String) -> Res<Arc<dyn MessageSender<M>>> {
+    pub fn new_message_sender(&self, name: String) -> Res<Arc<dyn Sender<M>>> {
         self.node.new_message_sender(name)
     }
 
-    pub fn message_receivers(&self) -> Vec<Arc<dyn MessageReceiver<M>>> {
+    pub fn message_receivers(&self) -> Vec<Arc<dyn Receiver<M>>> {
         if self.receivers.is_empty() {
             panic!("todo");
         }

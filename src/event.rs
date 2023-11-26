@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use scupt_util::error_type::ET;
-use scupt_util::message::MsgTrait;
+use scupt_util::message::{Message, MsgTrait};
 use scupt_util::node_id::NID;
 use scupt_util::res::Res;
 use tokio::sync::oneshot;
@@ -30,7 +30,7 @@ pub enum NetEvent<
         return_endpoint: bool,
     },
     NetListen(SocketAddr, Option<oneshot::Sender<EventResult>>),
-    NetSend(NID, M, Option<oneshot::Sender<EventResult>>),
+    NetSend(Message<M>, Option<oneshot::Sender<EventResult>>),
 
     Stop(Option<oneshot::Sender<EventResult>>),
     NewEventChannel(Arc<EventChannel<M>>),
@@ -46,8 +46,8 @@ impl <M:MsgTrait + 'static> Debug for NetEvent<M> {
             NetEvent::NetListen(address, _) => {
                 write!(f, "NetListen({:?})", address)?;
             }
-            NetEvent::NetSend(nid, m, _) => {
-                write!(f, "NetSend({:?}, {:?})", nid, m)?;
+            NetEvent::NetSend( m, _) => {
+                write!(f, "NetSend({:?})", m)?;
             }
             NetEvent::Stop(_) => {
                 write!(f, "Stop(_)")?;

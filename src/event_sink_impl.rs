@@ -1,9 +1,8 @@
 use std::net::SocketAddr;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use scupt_util::error_type::ET;
-use scupt_util::message::MsgTrait;
+use scupt_util::message::{Message, MsgTrait};
 use scupt_util::node_id::NID;
 use scupt_util::res::Res;
 use tokio::sync::{mpsc, oneshot};
@@ -12,8 +11,8 @@ use tracing::{error, trace};
 use crate::endpoint::Endpoint;
 use crate::event::{EventResult, NetEvent, ResultReceiver};
 use crate::event_sink::{ESConnectOpt, ESServeOpt, ESStopOpt, EventSink};
-use crate::message_receiver::MessageReceiver;
-use crate::message_sender::MessageSender;
+use crate::message_receiver::ReceiverOneshot;
+use crate::message_sender::Sender;
 use crate::message_receiver_endpoint::MessageReceiverEndpoint;
 
 use crate::opt_send::OptSend;
@@ -88,25 +87,24 @@ impl<M: MsgTrait> EventSenderImpl<M> {
     #[async_backtrace::framed]
     pub async fn async_send(
         &self,
-        node_id: NID,
-        msg: M,
+        msg: Message<M>,
         no_wait: bool,
         read_resp: bool
-    ) -> Res<Option<Arc<dyn MessageReceiver<M>>>> {
+    ) -> Res<Option<Box<dyn ReceiverOneshot<M>>>> {
         trace!("channel name {} send message {:?}", self.name, msg);
         if no_wait && !read_resp {
-            let event = NetEvent::NetSend(node_id, msg, None);
+            let event = NetEvent::NetSend(msg, None);
             self.async_event(event)?;
             trace!("channel name {} send message", self.name);
             Ok(None)
         } else {
             let (s, r) = oneshot::channel::<EventResult>();
-            let event = NetEvent::NetSend(node_id, msg, Some(s));
+            let event = NetEvent::NetSend(msg, Some(s));
             let event_result = self.wait_send_event_result(event, r).await?;
             let opt_ep = self.event_result_endpoint(event_result)?;
             match opt_ep {
                 Some(ep) => {
-                    Ok(Some(Arc::new(MessageReceiverEndpoint::new(ep))))
+                    Ok(Some(Box::new(MessageReceiverEndpoint::new(ep))))
                 }
                 None => {
                     Ok(None)
@@ -215,19 +213,12 @@ impl<
 #[async_trait]
 impl<
     M: MsgTrait + 'static,
-> MessageSender<M> for EventSenderImpl<
+> Sender<M> for EventSenderImpl<
     M> {
-    async fn send(&self, node_id: NID, message: M, opt: OptSend) -> Res<()> {
-        let _ = self.async_send(node_id, message, opt.is_enable_no_wait(), false).await?;
+    async fn send(&self, message: Message<M>, opt: OptSend) -> Res<()> {
+        let _ = self.async_send(message, opt.is_enable_no_wait(), false).await?;
         Ok(())
     }
-    async fn send_and_recv(&self, node_id: NID, message: M, opt: OptSend) -> Res<Arc<dyn MessageReceiver<M>>> {
-        let opt = self.async_send(node_id, message, opt.is_enable_no_wait(), true).await?;
-        if let Some(recv) = opt {
-            Ok(recv)
-        } else {
-            Err(ET::RecvError("cannot get receiver channel".to_string()))
-        }
-    }
+
 }
 

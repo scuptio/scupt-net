@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use tokio::sync::Mutex;
 use scupt_util::res::Res;
-use scupt_util::message::MsgTrait;
+use scupt_util::message::{Message, MsgTrait};
 use async_trait::async_trait;
 use scupt_util::error_type::ET;
 use scupt_util::node_id::NID;
@@ -50,11 +50,11 @@ impl <M:MsgTrait +'static> Client<M> {
         self.inner.connect(opt).await
     }
 
-    pub async fn send(&self, message:M) -> Res<()> {
+    pub async fn send(&self, message:Message<M>) -> Res<()> {
         self.inner.send(message).await
     }
 
-    pub async fn recv(&self) -> Res<M> {
+    pub async fn recv(&self) -> Res<Message<M>> {
         self.inner.recv().await
     }
 
@@ -137,7 +137,7 @@ impl <M:MsgTrait +'static> ClientInner<M> {
         Ok(())
     }
 
-    pub async fn send(&self, message:M) -> Res<()> {
+    pub async fn send(&self, message:Message<M>) -> Res<()> {
         let guard = self.opt_endpoint.lock().await;
         if let Some(e) = &(*guard) {
             e.send(message).await?;
@@ -147,7 +147,7 @@ impl <M:MsgTrait +'static> ClientInner<M> {
         }
     }
 
-    pub async fn recv(&self) -> Res<M> {
+    pub async fn recv(&self) -> Res<Message<M>> {
         let guard = self.opt_endpoint.lock().await;
         if let Some(e) = &(*guard) {
             let m = e.recv().await?;

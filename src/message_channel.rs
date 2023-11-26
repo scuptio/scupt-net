@@ -1,5 +1,5 @@
 use tokio::sync::mpsc;
 
-pub type MessageChReceiver<MsgTrait> = mpsc::UnboundedReceiver<MsgTrait>;
-pub type MessageChSender<MsgTrait> = mpsc::UnboundedSender<MsgTrait>;
+pub type MessageChReceiver<T> = mpsc::UnboundedReceiver<T>;
+pub type MessageChSender<T> = mpsc::UnboundedSender<T>;
 

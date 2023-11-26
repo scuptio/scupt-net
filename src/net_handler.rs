@@ -7,7 +7,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bincode::{Decode, Encode};
 use scupt_util::error_type::ET;
-use scupt_util::message::MsgTrait;
+use scupt_util::message::{Message, MsgTrait};
 use scupt_util::node_id::NID;
 use scupt_util::res::Res;
 use serde::{Deserialize, Serialize};
@@ -18,7 +18,7 @@ use crate::endpoint::Endpoint;
 use crate::event_sink_impl::EventSenderImpl;
 use crate::handle_event::HandleEvent;
 use crate::message_channel::MessageChSender;
-use crate::message_receiver::MessageReceiver;
+use crate::message_receiver::Receiver;
 use crate::message_receiver_channel::MessageReceiverChannel;
 use crate::notifier::{Notifier, spawn_cancelable_task};
 
@@ -27,8 +27,8 @@ pub type NodeSender<MsgTrait> = EventSenderImpl<MsgTrait>;
 
 pub struct InnerNetHandler<M: MsgTrait> {
     _node_id: NID,
-    message_ch_sender: Mutex<Vec<Arc<MessageChSender<M>>>>,
-    message_receiver: Vec<Arc<dyn MessageReceiver<M>>>,
+    message_ch_sender: Mutex<Vec<Arc<MessageChSender<(Message<M>, Endpoint)>>>>,
+    message_receiver: Vec<Arc<dyn Receiver<M>>>,
     stop_notify: Notifier,
 }
 
@@ -88,7 +88,7 @@ impl<M: MsgTrait> NetHandler<M> {
         }
     }
 
-    pub fn message_receiver(&self) -> Vec<Arc<dyn MessageReceiver<M>>> {
+    pub fn message_receiver(&self) -> Vec<Arc<dyn Receiver<M>>> {
         self.inner.message_receiver()
     }
 }
@@ -103,9 +103,9 @@ impl<M: MsgTrait> InnerNetHandler<M> {
             panic!("cannot 0 message receiver");
         }
         let mut message_ch_sender = vec![];
-        let mut message_receiver: Vec<Arc<dyn MessageReceiver<M>>> = vec![];
+        let mut message_receiver: Vec<Arc<dyn Receiver<M>>> = vec![];
         for _ in 0..num_message_receiver {
-            let (s, r) = mpsc::unbounded_channel::<M>();
+            let (s, r) = mpsc::unbounded_channel::<(Message<M>, Endpoint)>();
             let receiver = MessageReceiverChannel::new(Arc::new(Mutex::new(r)));
             message_receiver.push(Arc::new(receiver));
             message_ch_sender.push(Arc::new(s));
@@ -120,18 +120,18 @@ impl<M: MsgTrait> InnerNetHandler<M> {
         s
     }
 
-    fn message_receiver(&self) -> Vec<Arc<dyn MessageReceiver<M>>> {
+    fn message_receiver(&self) -> Vec<Arc<dyn Receiver<M>>> {
         self.message_receiver.clone()
     }
 
-    async fn receiver_message(&self, message: M) -> Res<()> {
+    async fn receiver_message(&self, message: Message<M>, ep:Endpoint) -> Res<()> {
         let mut hasher = DefaultHasher::new();
         message.hash(&mut hasher);
         let hash = hasher.finish();
         let guard = self.message_ch_sender.lock().await;
         let index = (hash as usize) % guard.len();
-        let n: Arc<MessageChSender<M>> = guard[index].clone();
-        let result = n.send(message);
+        let n: Arc<MessageChSender<(Message<M>, Endpoint)>> = guard[index].clone();
+        let result = n.send((message, ep));
         match result {
             Ok(_) => { Ok(()) }
             Err(e) => { Err(ET::TokioSenderError(e.to_string())) }
@@ -197,7 +197,7 @@ impl<M: MsgTrait> InnerNetHandler<M> {
         ep: &Endpoint,
     ) -> Res<()> {
         let m = ep.recv::<M>().await?;
-        self.receiver_message(m).await?;
+        self.receiver_message(m, ep.clone()).await?;
         Ok(())
     }
 

@@ -1,19 +1,26 @@
-use std::sync::Arc;
 use async_trait::async_trait;
-use scupt_util::message::MsgTrait;
-use scupt_util::node_id::NID;
+use scupt_util::message::{Message, MsgTrait};
 use scupt_util::res::Res;
-use crate::message_receiver::MessageReceiver;
-
+use crate::message_receiver::ReceiverOneshot;
 use crate::opt_send::OptSend;
 
-
-
 #[async_trait]
-pub trait MessageSender<
+pub trait Sender<
     M: MsgTrait + 'static,
 >: Sync + Send {
-    async fn send(&self, node_id: NID, message: M, opt: OptSend) -> Res<()>;
+    async fn send(&self, message: Message<M>, opt: OptSend) -> Res<()>;
+}
 
-    async fn send_and_recv(&self, node_id: NID, message: M, opt: OptSend) -> Res<Arc<dyn MessageReceiver<M>>>;
+#[async_trait]
+pub trait SenderRR<
+    M: MsgTrait + 'static,
+>: Sync + Send {
+    async fn send(&self, message: Message<M>, opt: OptSend) -> Res<Box<dyn ReceiverOneshot<M>>>;
+}
+
+#[async_trait]
+pub trait SenderOneshot<
+    M: MsgTrait + 'static,
+>: Sync + Send {
+    async fn send(self, message: Message<M>) -> Res<()>;
 }

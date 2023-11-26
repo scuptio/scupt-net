@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Once};
 
 use scupt_util::error_type::ET;
-use scupt_util::message::MsgTrait;
+use scupt_util::message::{Message, MsgTrait};
 use scupt_util::node_id::NID;
 use scupt_util::res::Res;
 use scupt_util::res_of::res_io;
@@ -16,7 +16,7 @@ use crate::event::{EventResult, NetEvent, ResultSender};
 use crate::event_channel::EventReceiver;
 use crate::event_sink::EventSink;
 use crate::handle_event::HandleEvent;
-use crate::message_sender::MessageSender;
+use crate::message_sender::Sender;
 use crate::net_handler::NodeSender;
 use crate::node_context::NodeContext;
 use crate::notifier::{Notifier, spawn_cancelable_task, spawn_cancelable_task_local_set};
@@ -75,7 +75,7 @@ Node<
     pub fn new_event_channel(&self, name: String) -> Res<Arc<dyn EventSink>> {
         self.node_context.new_event_channel(name)
     }
-    pub fn new_message_sender(&self, name: String) -> Res<Arc<dyn MessageSender<M>>> {
+    pub fn new_message_sender(&self, name: String) -> Res<Arc<dyn Sender<M>>> {
         self.node_context.new_message_sender(name)
     }
 
@@ -87,7 +87,7 @@ Node<
         Arc::new(self.node_event_sender())
     }
 
-    pub fn default_message_sender(&self) -> Arc<dyn MessageSender<M>> {
+    pub fn default_message_sender(&self) -> Arc<dyn Sender<M>> {
         Arc::new(self.node_event_sender())
     }
 
@@ -199,7 +199,8 @@ Node<
                 );
                 trace!("node {}: handle event: listen {} done", id, address.to_string());
             }
-            NetEvent::NetSend(node_id, message, opt_s) => {
+            NetEvent::NetSend(message, opt_s) => {
+                let node_id = message.dest();
                 trace!("handle event: send {:?}", message);
                 let r = Self::handle_send_message(
                     node,
@@ -233,7 +234,7 @@ Node<
     async fn handle_send_message(
         node: Arc<NodeContext<M>>,
         node_id: NID,
-        message: M,
+        message: Message<M>,
     ) -> Res<()> {
         let ep = node.get_endpoint(node_id).await?;
         ep.send(message).await?;

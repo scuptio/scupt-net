@@ -6,19 +6,18 @@ use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
 use futures::stream::{SplitSink, SplitStream};
 use scupt_util::error_type::ET;
-use scupt_util::message::{decode_message, encode_message, MsgTrait};
+use scupt_util::message::{decode_message, encode_message, Message, MsgTrait};
 use scupt_util::res::Res;
 use scupt_util::res_of::res_io;
 
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio_util::codec::Framed;
-use tracing::{error, Instrument, trace_span};
+use tracing::{Instrument, trace_span};
 
 use crate::framed_codec::FramedCodec;
 use crate::opt_ep::OptEP;
-use crate::serde_json_string::ActionSerdeJsonString;
-
+use crate::parse_dtm_message;
 
 struct _Endpoint {
     sender:Mutex<SplitSink<Framed<TcpStream, FramedCodec>, BytesMut>>,
@@ -56,7 +55,7 @@ impl _Endpoint {
     }
 
     // send message
-    async fn send<M: MsgTrait + 'static>(&self, m: M) -> Res<()> {
+    async fn send<M: MsgTrait + 'static>(&self, m: Message<M>) -> Res<()> {
         let vec = encode_message(m)?;
         let bytes = BytesMut::from(vec.as_slice());
         let mut sink = self.sender.lock().await;
@@ -68,7 +67,7 @@ impl _Endpoint {
     }
 
     // receive a message
-    async fn recv<M: MsgTrait + 'static>(&self) -> Res<M> {
+    async fn recv<M: MsgTrait + 'static>(&self) -> Res<Message<M>> {
         let mut stream = self.receiver.lock().instrument(trace_span!("lock")).await;
         let opt = stream.next().await;
         let r = match opt {
@@ -79,12 +78,12 @@ impl _Endpoint {
             Ok(b) => { b }
             Err(_e) => { return Err(ET::NoneOption); }
         };
-        let r = decode_message::<M>(b.as_slice());
+        let r = decode_message::<Message<M>>(b.as_slice());
         match r {
             Ok((m, _)) => { return Ok(m) }
             Err(e) => {
                 if self.enable_dtm_test {
-                    return parse_dtm_action_message(b.as_slice())
+                    return parse_dtm_message::parse_dtm_message(b.as_slice())
                 } else {
                     Err(e)
                 }
@@ -102,20 +101,6 @@ impl _Endpoint {
     }
 }
 
-
-fn parse_dtm_action_message<M:MsgTrait + 'static>(byte:&[u8]) -> Res<M> {
-    let (json, _) = decode_message::<ActionSerdeJsonString>(byte)?;
-    let string = json.to_string()?;
-    let r = serde_json::from_str::<M>(string.as_str());
-    match r {
-        Ok(m) => { Ok(m)  }
-        Err(e) => {
-            error!("parse DTM action message error: {}, json:{}", e.to_string(), string);
-            Err(ET::SerdeError(e.to_string()))
-        }
-    }
-}
-
 impl Endpoint {
     pub fn new(stream: TcpStream, remote_address: SocketAddr, opt_ep:OptEP) -> Self {
         Self {
@@ -123,11 +108,11 @@ impl Endpoint {
         }
     }
 
-    pub async fn send<M: MsgTrait + 'static>(&self, m: M) -> Res<()> {
+    pub async fn send<M: MsgTrait + 'static>(&self, m: Message<M>) -> Res<()> {
         self._ep.send(m).await
     }
 
-    pub async fn recv<M: MsgTrait + 'static>(&self) -> Res<M> {
+    pub async fn recv<M: MsgTrait + 'static>(&self) -> Res<Message<M>> {
         self._ep.recv::<M>().await
     }
 

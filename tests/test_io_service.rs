@@ -6,7 +6,7 @@ use std::time::Duration;
 use bincode::{Decode, Encode};
 use scupt_util::error_type::ET;
 use scupt_util::init_logger::logger_setup;
-use scupt_util::message::MsgTrait;
+use scupt_util::message::{Message, MsgTrait};
 use scupt_util::node_id::NID;
 use scupt_util::res::Res;
 use serde::{Deserialize, Serialize};
@@ -20,8 +20,8 @@ use tracing::{error, trace};
 
 use scupt_net::event_sink::{ESConnectOpt, ESServeOpt, ESStopOpt, EventSink};
 use scupt_net::io_service::IOService;
-use scupt_net::message_receiver::MessageReceiver;
-use scupt_net::message_sender::MessageSender;
+use scupt_net::message_receiver::Receiver;
+use scupt_net::message_sender::Sender;
 use scupt_net::notifier::Notifier;
 use scupt_net::opt_send::OptSend;
 
@@ -249,21 +249,24 @@ async fn connect(
 async fn send(
     service_node_id: NID,
     num_message: u32,
-    sender: Arc<dyn MessageSender<TestMsg>>,
+    sender: Arc<dyn Sender<TestMsg>>,
     addrs: HashMap<NID, SocketAddr>,
 ) -> Res<()> {
     for i in 0..num_message {
         let id = i + 1;
-        let message = TestMsg::Id(id);
+
         for (node_id, _) in &addrs {
-            sender.send(node_id.clone(), message.clone(), OptSend::default()).await?;
+            let message = Message::new(TestMsg::Id(id), service_node_id,  node_id.clone());
+            sender.send(message.clone(), OptSend::default()).await?;
         }
         for (node_id, _) in &addrs {
-            sender.send(node_id.clone(), message.clone(), OptSend::default()).await?;
+            let message = Message::new(TestMsg::Id(id), service_node_id,  node_id.clone());
+            sender.send(message.clone(), OptSend::default()).await?;
         }
     }
 
-    sender.send(service_node_id.clone(), TestMsg::Stop(service_node_id), OptSend::default()).await?;
+    let message = Message::new(TestMsg::Stop(service_node_id),service_node_id,  service_node_id);
+    sender.send(message, OptSend::default()).await?;
 
     trace!("send done {}", service_node_id);
     Ok(())
@@ -271,14 +274,14 @@ async fn send(
 
 async fn receive(
     node_id: NID,
-    receiver: Arc<dyn MessageReceiver<TestMsg>>,
+    receiver: Arc<dyn Receiver<TestMsg>>,
     stop_sender: UnboundedSender<NID>,
 ) -> Res<()> {
     loop {
         let result = receiver.receive().await;
         match result {
             Ok(m) => {
-                match m {
+                match m.payload() {
                     TestMsg::Id(_) => {}
                     TestMsg::Stop(id) => {
                         let r = stop_sender.send(id);

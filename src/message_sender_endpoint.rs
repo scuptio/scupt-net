@@ -1,16 +1,16 @@
 use std::marker::PhantomData;
+
 use async_trait::async_trait;
 use scupt_util::message::{Message, MsgTrait};
 use scupt_util::res::Res;
 use crate::endpoint::Endpoint;
-use crate::message_receiver::ReceiverOneshot;
-
-pub struct  MessageReceiverEndpoint<M:MsgTrait + 'static> {
+use crate::message_sender::SenderOneshot;
+pub struct  MessageSenderEndpoint<M:MsgTrait + 'static> {
     ep : Endpoint,
     _pd : PhantomData<M>
 }
 
-impl <M:MsgTrait + 'static> MessageReceiverEndpoint<M> {
+impl <M:MsgTrait + 'static> MessageSenderEndpoint<M> {
     pub fn new(ep:Endpoint) -> Self {
         Self {
             ep,
@@ -20,8 +20,9 @@ impl <M:MsgTrait + 'static> MessageReceiverEndpoint<M> {
 }
 
 #[async_trait]
-impl <M:MsgTrait + 'static> ReceiverOneshot<M> for MessageReceiverEndpoint<M> {
-    async fn receive(self) -> Res<Message<M>> {
-        self.ep.recv().await
+impl <M:MsgTrait + 'static> SenderOneshot<M> for MessageSenderEndpoint<M> {
+    async fn send(self, m: Message<M>) -> Res<()> {
+        self.ep.send(m).await?;
+        Ok(())
     }
 }
