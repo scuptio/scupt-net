@@ -36,9 +36,9 @@ struct Handler {
 }
 
 impl <M:MsgTrait +'static> Client<M> {
-    pub fn new(node_id:NID, name:String, addr:String) -> Res<Self> {
+    pub fn new(node_id:NID, name:String, addr:String, notifier:Notifier) -> Res<Self> {
         Ok(Self {
-            inner:Arc::new(ClientInner::new(node_id, name, addr)?)
+            inner:Arc::new(ClientInner::new(node_id, name, addr, notifier)?)
         })
     }
 
@@ -94,12 +94,11 @@ impl Default for OptClientConnect {
 }
 
 impl <M:MsgTrait +'static> ClientInner<M> {
-    pub fn new(node_id:NID, name:String, addr:String) -> Res<Self> {
-        let notify = Notifier::new();
+    pub fn new(node_id:NID, name:String, addr:String, notifier: Notifier) -> Res<Self> {
         let r = Self {
             nid: node_id.clone(),
             addr,
-            node: Node::new(node_id, name, Handler::new(), notify.clone())?,
+            node: Node::new(node_id, name, Handler::new(), notifier)?,
             opt_endpoint: Default::default(),
         };
         Ok(r)
