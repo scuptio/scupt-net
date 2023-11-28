@@ -9,7 +9,7 @@ use scupt_util::res_of::res_io;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::runtime::Runtime;
 use tokio::task::LocalSet;
-use tracing::{error, trace, trace_span, Instrument};
+use tracing::{error, Instrument, trace, trace_span};
 
 use crate::endpoint::Endpoint;
 use crate::event::{EventResult, NetEvent, ResultSender};
@@ -19,8 +19,9 @@ use crate::handle_event::HandleEvent;
 use crate::message_sender::{Sender, SenderRR};
 use crate::net_handler::NodeSender;
 use crate::node_context::NodeContext;
-use crate::notifier::{Notifier, spawn_cancelable_task, spawn_cancelable_task_local_set};
+use crate::notifier::Notifier;
 use crate::opt_ep::OptEP;
+use crate::task::spawn_local_task;
 
 #[derive(Clone)]
 pub struct Node<
@@ -118,19 +119,18 @@ Node<
         trace!("main loop {}", n.name());
         let task_name = format!("{}_main_loop", n.name());
         let notify = n.stop_notify();
-        spawn_cancelable_task_local_set(
-            &local_set,
-            notify,
-            task_name.as_str(),
-            async move {
-                Self::run_main_loop(
-                    name,
-                    n,
-                    c,
-                    h,
-                ).instrument(trace_span!("main loop")).await;
-            },
-        );
+        let f = async move {
+            Self::run_main_loop(
+                name,
+                n,
+                c,
+                h,
+            ).instrument(trace_span!("main loop")).await;
+        };
+
+        local_set.spawn_local(async move {
+            spawn_local_task(notify, task_name.as_str(), f)
+        });
     }
 
     #[async_backtrace::framed]
@@ -222,11 +222,11 @@ Node<
             }
             NetEvent::Stop(opt_s) => {
                 let stop_notify = node.stop_notify();
-                spawn_cancelable_task(stop_notify, "stop and notify", async move {
+                let _ = spawn_local_task(stop_notify, "stop and notify", async move {
                     node.stop_and_notify().await;
                     handle.on_stop().await;
                     Self::handle_opt_send_result(EventResult::ErrorType(ET::OK), opt_s);
-                });
+                })?;
                 return Err(ET::EOF);
             }
             NetEvent::NewEventChannel(ch) => {
@@ -269,7 +269,7 @@ Node<
                 handle,
             ).await;
         };
-        spawn_cancelable_task(notify, task_name.as_str(), main_loop);
+        spawn_local_task(notify, task_name.as_str(), main_loop)?;
         Ok(())
     }
 
@@ -295,11 +295,11 @@ Node<
             ).await;
             trace!("on connected done {}", task_name2);
         };
-        spawn_cancelable_task(
+        spawn_local_task(
             notify,
             task_name.as_str(),
             on_connected,
-        );
+        ).unwrap();
     }
 
     async fn task_handle_connected(
@@ -394,11 +394,11 @@ Node<
                 }
             };
         };
-        spawn_cancelable_task(
+        spawn_local_task(
             notify,
             format!("first accept {}", node_id).as_str(),
             future_accept_first,
-        );
+        )?;
         Ok(())
     }
 
@@ -455,16 +455,16 @@ Node<
                 }
             }
         };
-        spawn_cancelable_task(
+        spawn_local_task(
             node.stop_notify(),
             format!("accept connect {}", node.name()).as_str(),
             on_accepted,
-        );
-        spawn_cancelable_task(
+        )?;
+        spawn_local_task(
             node.stop_notify(),
             format!("accept new connect {}", node.name()).as_str(),
             future_accept_new_connection,
-        );
+        )?;
         Ok(())
     }
 

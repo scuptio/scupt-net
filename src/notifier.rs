@@ -1,17 +1,11 @@
-use std::future::Future;
-use std::io::Result;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::atomic::Ordering::SeqCst;
 use std::thread;
 use std::time::Duration;
-use scupt_util::error_type::ET;
-use scupt_util::res::Res;
 
-use tokio::select;
 use tokio::sync::Notify;
 use tokio::task;
-use tokio::task::{JoinHandle, LocalSet};
 use tokio::time::sleep;
 use tracing::trace;
 
@@ -66,13 +60,10 @@ impl Notifier {
         trace!("notify waiter {}", self.name);
         let ret = self.inner.notify_all();
         let inner = self.inner.clone();
-        let r = task::Builder::default().spawn(async move {
+
+        let _r = task::spawn(async move {
             inner.repeat_notify_until_no_waiting().await;
         });
-        match r {
-            Ok(_j) => {}
-            Err(e) => { trace!("notify error {:?}", e); }
-        }
         ret
     }
 
@@ -140,114 +131,5 @@ impl NotifyInner {
             thread::sleep(Duration::from_millis(10));
             self.stop_notifier.notify_waiters();
         }
-    }
-}
-
-pub async fn select_till_done<F>(notify: Notifier, future: F)
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-{
-    let f = async move {
-        let _ = select! {
-            _ = notify.notified() => {
-            trace ! ("task stop");
-            }
-            _r = future => {
-            trace ! ("task  end");
-            }
-        };
-    };
-    f.await;
-}
-
-
-pub async fn select_local_till_done<F>(notify: Notifier, future: F)
-    where
-        F: Future + 'static,
-        F::Output: 'static,
-{
-    let future = async move {
-        let _ = select! {
-            _ = notify.notified() => {
-            trace ! ("local task stop");
-            }
-            _r = future => {
-            trace ! ("local task  end");
-            }
-        };
-    };
-    future.await;
-}
-
-pub fn spawn_cancelable_task_mt<F>(stop_notify: Notifier, name: &str, future: F) -> Result<JoinHandle<()>>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-{
-    task::Builder::default().name(name).spawn(async move {
-        select_till_done(stop_notify, future).await
-    })
-}
-
-pub fn spawn_cancelable_task_local_set<F>(
-    task_set: &LocalSet,
-    stop_notify: Notifier,
-    name: &str,
-    future: F)
-    where
-        F: Future + 'static,
-        F::Output: 'static,
-{
-    let n = String::from(name);
-    task_set.spawn_local(async move {
-        spawn_cancelable_task(stop_notify, n.as_str(), future)
-    });
-}
-
-
-pub fn spawn_cancelable_task<F>(stop_notify: Notifier, name: &str, future: F)
-    where
-        F: Future + 'static,
-        F::Output: 'static,
-{
-    let _ = task::Builder::default().name(name).spawn_local(async move {
-        select_local_till_done(stop_notify, future).await
-    }).unwrap();
-}
-
-
-pub async fn __select_local_till_done<F>(notify: Notifier, future: F) -> Option<F::Output>
-    where
-        F: Future + 'static,
-        F::Output: 'static,
-{
-    let future = async move {
-        let r = select! {
-            _ = notify.notified() => {
-            trace ! ("local task stop");
-                None
-            }
-            r = future => {
-                trace ! ("local task  end");
-                Some(r)
-            }
-        };
-        r
-    };
-    let opt = future.await;
-    opt
-}
-pub fn spawn_task<F>(cancel_notifier: Notifier, name: &str, future: F) -> Res<JoinHandle<Option<F::Output>>>
-    where
-        F: Future + 'static,
-        F::Output: 'static,
-{
-    let r = task::Builder::default().name(name).spawn_local(async move {
-        __select_local_till_done(cancel_notifier, future).await
-    });
-    match r {
-        Ok(f) => Ok(f),
-        Err(e) => Err(ET::FatalError(e.to_string()))
     }
 }

@@ -31,5 +31,6 @@ pub mod client;
 pub mod message_receiver_endpoint;
 mod message_sender_endpoint;
 mod parse_dtm_message;
+pub mod task;
 
 

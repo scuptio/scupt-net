@@ -19,7 +19,8 @@ use crate::event_sink_impl::EventSenderImpl;
 use crate::handle_event::HandleEvent;
 use crate::message_channel::MessageChSender;
 use crate::message_receiver_channel::MessageReceiverChannel;
-use crate::notifier::{Notifier, spawn_cancelable_task};
+use crate::notifier::Notifier;
+use crate::task::spawn_local_task;
 
 pub type NodeSender<MsgTrait> = EventSenderImpl<MsgTrait>;
 
@@ -42,9 +43,9 @@ impl<M: MsgTrait> HandleEvent for NetHandler<M> {
     async fn on_accepted(&self, endpoint: Endpoint) -> Res<()> {
         trace!("{} accept connection {}", self.name, endpoint.remote_address().to_string());
         let inner = self.inner.clone();
-        spawn_cancelable_task(inner.stop_notify.clone(), "handle_message, ", async move {
+        spawn_local_task(inner.stop_notify.clone(), "handle_message, ", async move {
             let _r = inner.process_message(endpoint).await;
-        });
+        })?;
         Ok(())
     }
 
