@@ -11,7 +11,7 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{error, trace};
 
 use crate::endpoint::Endpoint;
-use crate::event::{EventResult, NetEvent, ResultReceiver};
+use crate::event::{EventResult, NetEvent, NetSendControl, ResultReceiver};
 use crate::event_sink::{ESConnectOpt, ESServeOpt, ESStopOpt, EventSink};
 use crate::message_receiver::ReceiverResp;
 use crate::message_sender::{Sender, SenderRR};
@@ -95,13 +95,21 @@ impl<M: MsgTrait> EventSenderImpl<M> {
     ) -> Res<Option<Arc<dyn ReceiverResp<M>>>> {
         trace!("channel name {} send message {:?}", self.name, msg);
         if no_wait && !read_resp {
-            let event = NetEvent::NetSend(msg, None);
+            let ctrl = NetSendControl {
+                sender:None,
+                return_response: read_resp,
+            };
+            let event = NetEvent::NetSend(msg, ctrl);
             self.async_event(event)?;
             trace!("channel name {} send message", self.name);
             Ok(None)
         } else {
             let (s, r) = oneshot::channel::<EventResult>();
-            let event = NetEvent::NetSend(msg, Some(s));
+            let ctrl = NetSendControl {
+                sender: Some(s),
+                return_response: read_resp,
+            };
+            let event = NetEvent::NetSend(msg, ctrl);
             let event_result = self.wait_send_event_result(event, r).await?;
             let opt_ep = self.event_result_endpoint(event_result)?;
             match opt_ep {

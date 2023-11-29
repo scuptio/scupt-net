@@ -19,6 +19,10 @@ pub enum EventResult {
 pub type ResultSender = oneshot::Sender<EventResult>;
 pub type ResultReceiver = oneshot::Receiver<EventResult>;
 
+pub struct NetSendControl {
+    pub sender: Option<oneshot::Sender<EventResult>>,
+    pub return_response: bool
+}
 
 pub enum NetEvent<
     M: MsgTrait + 'static,
@@ -30,7 +34,7 @@ pub enum NetEvent<
         return_endpoint: bool,
     },
     NetListen(SocketAddr, Option<oneshot::Sender<EventResult>>),
-    NetSend(Message<M>, Option<oneshot::Sender<EventResult>>),
+    NetSend(Message<M>, NetSendControl),
 
     Stop(Option<oneshot::Sender<EventResult>>),
     NewEventChannel(Arc<EventChannel<M>>),

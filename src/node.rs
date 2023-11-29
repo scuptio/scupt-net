@@ -210,14 +210,35 @@ Node<
                 );
                 trace!("node {}: handle event: listen {} done", id, address.to_string());
             }
-            NetEvent::NetSend(message, opt_s) => {
+            NetEvent::NetSend(message, ctrl) => {
+                let return_response = ctrl.return_response;
+                let opt_s = ctrl.sender;
                 let node_id = message.dest();
                 trace!("handle event: send {:?}", message);
                 let r = Self::handle_send_message(
                     node,
                     node_id,
-                    message).await;
-                Self::handle_opt_send_result(EventResult::ErrorType(r.err().unwrap_or(ET::OK)), opt_s);
+                    message,
+                    return_response
+                ).await;
+                let er = if return_response {
+                    let ret = match r {
+                        Ok(opt_ep) => {
+                            if let Some(ep) = opt_ep {
+                                Ok(ep)
+                            } else {
+                                Err(ET::NoneOption)
+                            }
+                        }
+                        Err(e) => {
+                            Err(e)
+                        }
+                    };
+                    EventResult::NetEndpoint(ret)
+                } else {
+                    EventResult::ErrorType(r.err().unwrap_or(ET::OK))
+                };
+                Self::handle_opt_send_result(er, opt_s);
                 trace!("handle event: send done");
             }
             NetEvent::Stop(opt_s) => {
@@ -246,10 +267,15 @@ Node<
         node: Arc<NodeContext<M>>,
         node_id: NID,
         message: Message<M>,
-    ) -> Res<()> {
+        return_response:bool,
+    ) -> Res<Option<Endpoint>> {
         let ep = node.get_endpoint(node_id).await?;
         ep.send(message).await?;
-        Ok(())
+        if return_response {
+            Ok(Some(ep))
+        } else {
+            Ok(None)
+        }
     }
 
     #[async_backtrace::framed]
