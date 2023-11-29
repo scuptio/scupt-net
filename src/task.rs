@@ -47,7 +47,7 @@ pub fn spawn_task<F>(cancel_notifier: Notifier, _name: &str, future: F) -> Res<J
 }
 
 #[cfg(not(task_name))]
-pub fn spawn_task_timeout<F>(
+pub fn spawn_local_task_timeout<F>(
     cancel_notifier: Notifier,
     duration: Duration,
     _name: &str,
@@ -57,7 +57,7 @@ pub fn spawn_task_timeout<F>(
         F: Future + Send + 'static,
         F::Output: Send + 'static,
 {
-    Ok(task::spawn(async move {
+    Ok(task::spawn_local(async move {
         __select_local_till_done_or_timeout(cancel_notifier, duration, future).await
     }))
 }
