@@ -3,15 +3,14 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::Mutex;
-use scupt_util::res::Res;
-use scupt_util::message::{Message, MsgTrait};
 use async_trait::async_trait;
 use scupt_util::error_type::ET;
+use scupt_util::message::{Message, MsgTrait};
 use scupt_util::node_id::NID;
+use scupt_util::res::Res;
+use tokio::sync::Mutex;
 use tokio::task::LocalSet;
 use tokio::time::sleep;
-
 
 use crate::endpoint::Endpoint;
 use crate::event_sink::ESConnectOption;
@@ -44,6 +43,10 @@ impl <M:MsgTrait +'static> Client<M> {
 
     pub fn run(&self, local:&LocalSet) {
         self.inner.run(local);
+    }
+
+    pub async fn is_connected(&self) -> bool {
+        self.inner.is_connected().await
     }
 
     pub async fn connect(&self, opt:OptClientConnect) -> Res<()> {
@@ -106,6 +109,11 @@ impl <M:MsgTrait +'static> ClientInner<M> {
 
     pub fn run(&self, local:&LocalSet) {
         self.node.run_local(local);
+    }
+
+    pub async fn is_connected(&self) -> bool {
+        let g = self.opt_endpoint.lock().await;
+        g.is_some()
     }
 
     pub async fn connect(&self, opt:OptClientConnect) -> Res<()> {
