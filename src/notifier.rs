@@ -120,14 +120,14 @@ impl NotifyInner {
 
     // Keep invoking notify_waiters until the num_waiting is 0.
     async fn repeat_notify_until_no_waiting(&self) {
-        while self.num_waiting.load(SeqCst) == 0 {
+        while self.num_waiting.load(SeqCst) != 0 {
             sleep(Duration::from_millis(10)).await;
             self.stop_notifier.notify_waiters();
         }
     }
 
     fn repeat_notify(&self) {
-        while self.num_waiting.load(SeqCst) == 0 {
+        while self.num_waiting.load(SeqCst) != 0 {
             thread::sleep(Duration::from_millis(10));
             self.stop_notifier.notify_waiters();
         }
