@@ -62,7 +62,7 @@ impl Notifier {
         let inner = self.inner.clone();
 
         let _r = task::spawn(async move {
-            inner.repeat_notify_until_no_waiting().await;
+            inner.task_repeat_notify_until_no_waiting().await;
         });
         ret
     }
@@ -71,7 +71,9 @@ impl Notifier {
         trace!("notify waiter {}", self.name);
         let ret = self.inner.notify_all();
         let inner = self.inner.clone();
-        inner.repeat_notify();
+        let _s = thread::Builder::new().spawn(move || {
+            inner.repeat_notify_until_no_waiting();
+        });
         ret
     }
 }
@@ -119,14 +121,14 @@ impl NotifyInner {
     }
 
     // Keep invoking notify_waiters until the num_waiting is 0.
-    async fn repeat_notify_until_no_waiting(&self) {
+    async fn task_repeat_notify_until_no_waiting(&self) {
         while self.num_waiting.load(SeqCst) != 0 {
             sleep(Duration::from_millis(10)).await;
             self.stop_notifier.notify_waiters();
         }
     }
 
-    fn repeat_notify(&self) {
+    fn repeat_notify_until_no_waiting(&self) {
         while self.num_waiting.load(SeqCst) != 0 {
             thread::sleep(Duration::from_millis(10));
             self.stop_notifier.notify_waiters();
