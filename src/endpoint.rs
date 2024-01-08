@@ -56,6 +56,9 @@ impl _Endpoint {
 
     // send message
     async fn send<M: MsgTrait + 'static>(&self, m: Message<M>) -> Res<()> {
+        if self.enable_dtm_test {
+            return Ok(())
+        }
         let vec = encode_message(m)?;
         let bytes = BytesMut::from(vec.as_slice());
         let mut sink = self.sender.lock().await;
