@@ -27,7 +27,8 @@ pub struct IOService<M: MsgTrait> {
 
 
 pub struct IOServiceOpt {
-    pub num_message_receiver: u32
+    pub num_message_receiver: u32,
+    pub testing:bool
 }
 
 impl<M: MsgTrait> IOService<M> {
@@ -45,6 +46,7 @@ impl<M: MsgTrait> IOService<M> {
             node_id.clone(),
             name,
             handler.clone(),
+            opt.testing,
             stop_notify)?;
 
         let s = Self {

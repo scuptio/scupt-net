@@ -35,11 +35,12 @@ pub struct NodeContext<M: MsgTrait + 'static> {
     mutex_ctx: Mutex<_NodeContext>,
     channel_set: Arc<SyncMutex<EventChannelMap<M>>>,
     default_channel: Arc<EventChannel<M>>,
+    enable_testing:bool
 }
 
 
 impl<M: MsgTrait + 'static> NodeContext<M> {
-    pub fn new(node_id: NID, name: String, stop_notify: Notifier) -> Self {
+    pub fn new(node_id: NID, name: String, testing:bool, stop_notify: Notifier) -> Self {
         let mut map = HashMap::new();
         let channel_name = format!("{}_default", name);
         let default_channel = Arc::new(Self::create_event_channel(channel_name));
@@ -52,6 +53,7 @@ impl<M: MsgTrait + 'static> NodeContext<M> {
             mutex_ctx: Mutex::new(_NodeContext::new(name)),
             channel_set: Arc::new(SyncMutex::new(map)),
             default_channel,
+            enable_testing: testing,
         }
     }
 
@@ -114,6 +116,10 @@ impl<M: MsgTrait + 'static> NodeContext<M> {
         self.default_channel.clone()
     }
 
+    pub fn enable_testing(&self) -> bool {
+        self.enable_testing
+    }
+    
     pub async fn stop(&self) {
         let mut map = self.channel_set.lock().unwrap();
         for (_, v) in map.iter() {

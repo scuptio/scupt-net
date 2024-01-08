@@ -47,11 +47,10 @@ Node<
         node_id: NID,
         name: String,
         handle: H,
+        testing:bool,
         stop_notify: Notifier,
     ) -> Res<Self> {
-        let node_context = NodeContext::new(node_id.clone(), name, stop_notify);
-
-
+        let node_context = NodeContext::new(node_id.clone(), name, testing, stop_notify);
         let node = Self {
             _node_id: node_id,
             handle: Arc::new(handle),
@@ -115,6 +114,7 @@ Node<
         trace!("run local once {}", name);
         let h = self.handle.clone();
         let n = self.node_context.clone();
+        let enable_testing = n.enable_testing();
         let c = self.node_context.default_event_channel().receiver().unwrap();
         trace!("main loop {}", n.name());
         let task_name = format!("{}_main_loop", n.name());
@@ -125,6 +125,7 @@ Node<
                 n,
                 c,
                 h,
+                enable_testing
             ).instrument(trace_span!("main loop")).await;
         };
 
@@ -139,6 +140,7 @@ Node<
         node: Arc<NodeContext<M>>,
         channel: EventReceiver<M>,
         handle: Arc<H>,
+        enable_testing:bool
     ) {
         trace!("node {}, run main loop, {}", name, node.name());
         let mut receiver = channel;
@@ -150,7 +152,7 @@ Node<
                 Ok(event) => {
                     let h = handle.clone();
                     let _r = Self::handle_event(
-                        node.clone(), event, h)
+                        node.clone(), event, h, enable_testing)
                         .instrument(trace_span!("handle_event")).await;
                     match _r {
                         Ok(_) => {}
@@ -179,6 +181,7 @@ Node<
         node: Arc<NodeContext<M>>,
         event: NetEvent<M>,
         handle: Arc<H>,
+        enable_testing:bool
     ) -> Res<()> {
         match event {
             NetEvent::NetConnect {
@@ -196,6 +199,7 @@ Node<
                     handle,
                     opt_sender,
                     return_endpoint,
+                    enable_testing
                 );
                 trace!("node {}: handle event:connect {} done", id, node_id);
             }
@@ -207,6 +211,7 @@ Node<
                     address,
                     handle,
                     opt_s,
+                    enable_testing
                 );
                 trace!("node {}: handle event: listen {} done", id, address.to_string());
             }
@@ -256,6 +261,7 @@ Node<
                     node.clone(),
                     ch.receiver().unwrap(),
                     handle.clone(),
+                    enable_testing
                 ).await?;
             }
         }
@@ -284,6 +290,7 @@ Node<
         node: Arc<NodeContext<M>>,
         channel: EventReceiver<M>,
         handle: Arc<H>,
+        enable_testing:bool
     ) -> Res<()> {
         let notify = node.stop_notify();
         let task_name = format!("main loop  {}", name);
@@ -293,6 +300,7 @@ Node<
                 node,
                 channel,
                 handle,
+                enable_testing
             ).await;
         };
         spawn_local_task(notify, task_name.as_str(), main_loop)?;
@@ -307,6 +315,7 @@ Node<
         handle: Arc<H>,
         opt_sender: Option<ResultSender>,
         return_endpoint: bool,
+        enable_testing:bool
     ) {
         let node_name = node.name().clone();
         let notify = node.stop_notify();
@@ -318,6 +327,7 @@ Node<
                 node, node_id,
                 address, handle, opt_sender,
                 return_endpoint,
+                enable_testing
             ).await;
             trace!("on connected done {}", task_name2);
         };
@@ -335,6 +345,7 @@ Node<
         handle: Arc<H>,
         opt_sender: Option<ResultSender>,
         return_endpoint: bool,
+        enable_testing:bool
     ) {
         trace!("{} task handle connect to {} {}", node.name(), node_id, address.to_string());
         let r_connect = TcpStream::connect(address).await;
@@ -346,7 +357,8 @@ Node<
                     let r_addr = s.peer_addr();
                     match res_io(r_addr) {
                         Ok(addr) => {
-                            let ep = Endpoint::new(s, addr, OptEP::default());
+                            let opt = OptEP::new().enable_dtm_test(enable_testing);
+                            let ep = Endpoint::new(s, addr, opt);
                             {
                                 let r = node.add_endpoint(node_id, ep.clone()).await;
                                 match r {
@@ -391,6 +403,7 @@ Node<
         address: SocketAddr,
         handle: Arc<H>,
         opt_sender: Option<ResultSender>,
+        enable_testing:bool
     ) -> Res<()> {
         let node_id = node.node_id();
         let h = handle.clone();
@@ -413,7 +426,9 @@ Node<
             match Self::accept_new_connection(
                 node,
                 listener,
-                h.clone()).await {
+                h.clone(),
+                enable_testing
+            ).await {
                 Ok(()) => {}
                 Err(e) => {
                     h.on_error(e.clone()).await;
@@ -434,12 +449,13 @@ Node<
         handle: Arc<H>,
         socket: TcpStream,
         addr: SocketAddr,
+        enable_testing:bool
     ) -> Res<()> {
         trace!("accept new {}", addr.to_string());
         let ep = Endpoint::new(
             socket,
             addr,
-            OptEP::default().enable_dtm_test(true)
+            OptEP::default().enable_dtm_test(enable_testing)
         );
         let on_accepted = {
             let h = handle.clone();
@@ -466,6 +482,7 @@ Node<
                     n,
                     listener,
                     h.clone(),
+                    enable_testing
                 ).await {
                     Err(e) => {
                         match e {
@@ -498,6 +515,7 @@ Node<
         node: Arc<NodeContext<M>>,
         listener: TcpListener,
         handle: Arc<H>,
+        enable_testing:bool
     ) -> Res<()> {
         let r = listener.accept().await;
         let (socket, addr) = res_io(r)?;
@@ -507,6 +525,7 @@ Node<
             handle,
             socket,
             addr,
+            enable_testing
         ).await
     }
 

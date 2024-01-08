@@ -70,7 +70,8 @@ fn test_service(
     for (k, _) in &id2address {
         let name = format!("service_{}", k);
         let opt = IOServiceOpt {
-            num_message_receiver
+            num_message_receiver,
+            testing: false,
         };
         let s = IOService::<TestMsg>::new(k.clone(), name, opt,  Notifier::new())?;
         services.push(Arc::new(s));

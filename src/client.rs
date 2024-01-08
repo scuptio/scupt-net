@@ -35,9 +35,9 @@ struct Handler {
 }
 
 impl <M:MsgTrait +'static> Client<M> {
-    pub fn new(node_id:NID, name:String, addr:String, notifier:Notifier) -> Res<Self> {
+    pub fn new(node_id:NID, name:String, addr:String, opt_client: OptClient, notifier:Notifier) -> Res<Self> {
         Ok(Self {
-            inner:Arc::new(ClientInner::new(node_id, name, addr, notifier)?)
+            inner:Arc::new(ClientInner::new(node_id, name, addr, opt_client, notifier)?)
         })
     }
 
@@ -76,6 +76,9 @@ impl Handler {
     }
 }
 
+pub struct OptClient {
+    pub enable_testing:bool,
+}
 pub struct OptClientConnect {
     pub retry_max:u64,
     pub retry_wait_ms:u64
@@ -97,11 +100,11 @@ impl Default for OptClientConnect {
 }
 
 impl <M:MsgTrait +'static> ClientInner<M> {
-    pub fn new(node_id:NID, name:String, addr:String, notifier: Notifier) -> Res<Self> {
+    pub fn new(node_id:NID, name:String, addr:String, opt:OptClient, notifier: Notifier) -> Res<Self> {
         let r = Self {
             nid: node_id.clone(),
             addr,
-            node: Node::new(node_id, name, Handler::new(), notifier)?,
+            node: Node::new(node_id, name, Handler::new(), opt.enable_testing, notifier)?,
             opt_endpoint: Default::default(),
         };
         Ok(r)
