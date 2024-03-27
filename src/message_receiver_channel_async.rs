@@ -55,7 +55,8 @@ impl<M: MsgTrait + 'static> ReceiverRRAsync<M> for MessageReceiverChannelAsync<M
         match opt {
             Some((message, ep)) => {
                 Ok((message,
-                    Arc::new(MessageSenderEndpoint::new(ep)))) }
+                    Arc::new(MessageSenderEndpoint::new(ep))))
+            }
             None => {
                 // the sender is closed
                 Err(ET::EOF)

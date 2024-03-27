@@ -1,8 +1,6 @@
-
 pub struct OptSend {
-    no_wait: bool
+    no_wait: bool,
 }
-
 
 
 impl OptSend {

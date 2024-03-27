@@ -52,7 +52,7 @@ Node<
         node_id: NID,
         name: String,
         handle: H,
-        testing:bool,
+        testing: bool,
         stop_notify: Notifier,
     ) -> Res<Self> {
         let node_context = NodeContext::new(node_id.clone(), name, testing, stop_notify);
@@ -145,7 +145,7 @@ Node<
                 n,
                 c,
                 h,
-                enable_testing
+                enable_testing,
             ).instrument(trace_span!("main loop")).await;
         };
 
@@ -160,7 +160,7 @@ Node<
         node: Arc<NodeContext<M>>,
         channel: EventReceiver<M>,
         handle: Arc<H>,
-        enable_testing:bool
+        enable_testing: bool,
     ) {
         trace!("node {}, run main loop, {}", name, node.name());
         let mut receiver = channel;
@@ -201,7 +201,7 @@ Node<
         node: Arc<NodeContext<M>>,
         event: NetEvent<M>,
         handle: Arc<H>,
-        enable_testing:bool
+        enable_testing: bool,
     ) -> Res<()> {
         match event {
             NetEvent::NetConnect {
@@ -219,7 +219,7 @@ Node<
                     address,
                     handle,
                     opt_sender,
-                    enable_testing
+                    enable_testing,
                 );
                 trace!("node {}: handle event:connect {} done", id, node_id);
             }
@@ -231,7 +231,7 @@ Node<
                     address,
                     handle,
                     opt_s,
-                    enable_testing
+                    enable_testing,
                 );
                 trace!("node {}: handle event: listen {} done", id, address.to_string());
             }
@@ -242,7 +242,7 @@ Node<
                     node_id,
                     false,
                     message,
-                    result
+                    result,
                 ).await?;
             }
             NetEvent::Stop(opt_s) => {
@@ -260,7 +260,7 @@ Node<
                     node.clone(),
                     ch.receiver().unwrap(),
                     handle.clone(),
-                    enable_testing
+                    enable_testing,
                 ).await?;
             }
         }
@@ -276,7 +276,7 @@ Node<
         result_sender: ResultSenderType<
             Res<Option<Arc<dyn EndpointSync<M>>>>,
             Res<Option<Arc<dyn EndpointAsync<M>>>>
-        >
+        >,
     ) -> Res<()> {
         let _m = message.clone();
         let ep_result = node.get_endpoint(node_id).await;
@@ -300,7 +300,7 @@ Node<
         node: Arc<NodeContext<M>>,
         channel: EventReceiver<M>,
         handle: Arc<H>,
-        enable_testing:bool
+        enable_testing: bool,
     ) -> Res<()> {
         let notify = node.stop_notify();
         let task_name = format!("main loop  {}", name);
@@ -310,7 +310,7 @@ Node<
                 node,
                 channel,
                 handle,
-                enable_testing
+                enable_testing,
             ).await;
         };
         spawn_local_task(notify, task_name.as_str(), main_loop)?;
@@ -328,7 +328,7 @@ Node<
             Res<Option<Arc<dyn EndpointSync<M>>>>,
             Res<Option<Arc<dyn EndpointAsync<M>>>>
         >,
-        enable_testing:bool
+        enable_testing: bool,
     ) {
         let node_name = node.name().clone();
         let notify = node.stop_notify();
@@ -339,7 +339,7 @@ Node<
             Self::task_handle_connected(
                 node, return_endpoint, node_id,
                 address, handle, opt_sender,
-                enable_testing
+                enable_testing,
             ).await;
             trace!("on connected done {}", task_name2);
         };
@@ -360,7 +360,7 @@ Node<
             Res<Option<Arc<dyn EndpointSync<M>>>>,
             Res<Option<Arc<dyn EndpointAsync<M>>>>
         >,
-        enable_testing:bool
+        enable_testing: bool,
     ) {
         trace!("{} task handle connect to {} {}", node.name(), node_id, address.to_string());
         let r_connect = TcpStream::connect(address).await;
@@ -414,7 +414,7 @@ Node<
             Res<Option<Arc<dyn EndpointSync<M>>>>,
             Res<Option<Arc<dyn EndpointAsync<M>>>>
         >,
-        enable_testing:bool
+        enable_testing: bool,
     ) -> Res<()> {
         let node_id = node.node_id();
         let h = handle.clone();
@@ -438,7 +438,7 @@ Node<
                 node,
                 listener,
                 h.clone(),
-                enable_testing
+                enable_testing,
             ).await {
                 Ok(()) => {}
                 Err(e) => {
@@ -460,13 +460,13 @@ Node<
         handle: Arc<H>,
         socket: TcpStream,
         addr: SocketAddr,
-        enable_testing:bool
+        enable_testing: bool,
     ) -> Res<()> {
         trace!("accept new {}", addr.to_string());
         let ep = Arc::new(EndpointAsyncImpl::new(
             socket,
             addr,
-            OptEP::default().enable_dtm_test(enable_testing)
+            OptEP::default().enable_dtm_test(enable_testing),
         ));
         let on_accepted = {
             let h = handle.clone();
@@ -493,7 +493,7 @@ Node<
                     n,
                     listener,
                     h.clone(),
-                    enable_testing
+                    enable_testing,
                 ).await {
                     Err(e) => {
                         match e {
@@ -526,7 +526,7 @@ Node<
         node: Arc<NodeContext<M>>,
         listener: TcpListener,
         handle: Arc<H>,
-        enable_testing:bool
+        enable_testing: bool,
     ) -> Res<()> {
         let r = listener.accept().await;
         let (socket, addr) = res_io(r)?;
@@ -536,7 +536,7 @@ Node<
             handle,
             socket,
             addr,
-            enable_testing
+            enable_testing,
         ).await
     }
 
@@ -567,7 +567,7 @@ Node<
                             Ok(()) => {}
                             Err(_e) => { error!("send async error"); }
                         }
-                    },
+                    }
                     _ => {}
                 }
             }

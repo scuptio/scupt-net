@@ -1,8 +1,9 @@
 use std::sync::Arc;
+use std::sync::Mutex;
+
 use scupt_util::error_type::ET;
 use scupt_util::message::{Message, MsgTrait};
 use scupt_util::res::Res;
-use std::sync::Mutex;
 
 use crate::endpoint_sync::EndpointSync;
 use crate::message_channel::MessageChSyncReceiver;

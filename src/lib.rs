@@ -22,7 +22,7 @@ pub mod es_option;
 mod message_receiver_endpoint;
 mod endpoint_async_impl;
 mod event;
-mod event_sink_async_impl;
+mod event_sink_impl;
 mod framed_codec;
 mod framed_header;
 mod net_handler;
@@ -38,7 +38,6 @@ mod parse_dtm_message;
 
 mod endpoint_sync;
 
-mod event_sink_impl;
 mod endpoint_sync_impl;
 mod endpoint_inner;
 mod message_receiver_channel_sync;

@@ -1,15 +1,16 @@
 use std::sync::Arc;
+
 use scupt_util::message::MsgTrait;
 use scupt_util::node_id::NID;
 use scupt_util::res::Res;
 use tokio::runtime::Runtime;
 use tokio::task::LocalSet;
+
 use crate::event_sink_sync::EventSinkSync;
 use crate::message_receiver_sync::ReceiverSync;
 use crate::message_sender_sync::SenderSync;
 
-
-pub trait IOServiceSync<M:MsgTrait> : Send + Sync {
+pub trait IOServiceSync<M: MsgTrait>: Send + Sync {
     fn block_run(&self, opt: Option<LocalSet>, runtime: Arc<Runtime>);
 
     fn node_id(&self) -> NID;

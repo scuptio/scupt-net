@@ -1,4 +1,3 @@
-/*
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -10,25 +9,26 @@ use scupt_util::node_id::NID;
 use scupt_util::res::Res;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, trace};
+
 use crate::endpoint_async::EndpointAsync;
-
-
-use crate::event::{EventResult, NetEvent, NetSendControl, ResultReceiver};
+use crate::endpoint_sync::EndpointSync;
 use crate::es_option::{ESConnectOpt, ESServeOpt, ESStopOpt};
-use crate::event_sink::EventSink;
+use crate::event::{AsyncReceiver, NetEvent, ResultSenderType, SyncReceiver};
 use crate::event_sink_async::EventSinkAsync;
-use crate::message_receiver::ReceiverResp;
-use crate::message_sender::{Sender, SenderRR};
+use crate::event_sink_sync::EventSinkSync;
+use crate::message_receiver_async::ReceiverResp;
 use crate::message_receiver_endpoint::MessageReceiverEndpoint;
-
+use crate::message_sender_async::{SenderAsync, SenderRRAsync};
+use crate::message_sender_sync::SenderSync;
 use crate::opt_send::OptSend;
 
-pub struct EventSinkImpl<M: MsgTrait> {
+pub struct EventSenderImpl<M: MsgTrait> {
     name: String,
     sender: mpsc::UnboundedSender<NetEvent<M>>,
 }
 
-impl<M: MsgTrait> EventSinkImpl<M> {
+
+impl<M: MsgTrait> EventSenderImpl<M> {
     pub fn new(name: String, sender: mpsc::UnboundedSender<NetEvent<M>>) -> Self {
         Self {
             name,
@@ -40,102 +40,202 @@ impl<M: MsgTrait> EventSinkImpl<M> {
         &self.name
     }
 
-    async fn async_serve(&self, addr: SocketAddr, no_wait: bool) -> Res<()> {
-        trace!("async serve {} {}", self.channel_name(), addr.to_string());
-        if no_wait {
-            let event = NetEvent::NetListen(addr, None);
-            self.async_event(event)
-        } else {
-            let (s, r) = oneshot::channel::<EventResult<M>>();
-            let event = NetEvent::NetListen(addr, Some(s));
-            let event_result = self.wait_send_event_result(event, r).await?;
-            let _ = self.event_result(event_result)?;
-            Ok(())
-        }
+    async fn recv_result(
+        &self,
+        receiver: AsyncReceiver<Res<()>>,
+    ) -> Res<()> {
+        let ret = receiver.await.map_err(|e| {
+            ET::RecvError(e.to_string())
+        })?;
+        ret
     }
 
-    async fn async_connect(
+    fn recv_result_sync(
+        &self,
+        receiver: SyncReceiver<Res<()>>,
+    ) -> Res<()> {
+        let ret = receiver.recv().map_err(|e| {
+            ET::RecvError(e.to_string())
+        })?;
+        ret
+    }
+
+    async fn recv_result_async_ep(
+        &self,
+        receiver: AsyncReceiver<Res<Option<Arc<dyn EndpointAsync<M>>>>>,
+    ) -> Res<Option<Arc<dyn EndpointAsync<M>>>> {
+        let ret = receiver.await.map_err(|e| {
+            ET::RecvError(e.to_string())
+        })?;
+        ret
+    }
+
+    fn recv_result_sync_ep(
+        &self,
+        receiver: SyncReceiver<Res<Option<Arc<dyn EndpointSync<M>>>>>,
+    ) -> Res<Option<Arc<dyn EndpointSync<M>>>> {
+        let ret = receiver.recv().map_err(|e| {
+            ET::RecvError(e.to_string())
+        })?;
+        ret
+    }
+
+    async fn serve_async(&self, addr: SocketAddr, no_wait: bool) -> Res<()> {
+        trace!("async serve {} {}", self.channel_name(), addr.to_string());
+        if no_wait {
+            let event = NetEvent::NetListen(addr, ResultSenderType::SendNone);
+            self.async_event(event)?;
+        } else {
+            let (s, r) = oneshot::channel();
+            let _event = NetEvent::NetListen(addr, ResultSenderType::Async(s));
+            self.async_event(_event)?;
+            let _r = self.recv_result_async_ep(r).await?;
+        }
+        Ok(())
+    }
+
+    fn serve_sync(&self, addr: SocketAddr, no_wait: bool) -> Res<()> {
+        trace!("async serve {} {}", self.channel_name(), addr.to_string());
+        if no_wait {
+            let event = NetEvent::NetListen(addr, ResultSenderType::SendNone);
+            self.async_event(event)?;
+        } else {
+            let (s, r) = std::sync::mpsc::channel();
+            let _event = NetEvent::NetListen(addr, ResultSenderType::Sync(s));
+            self.async_event(_event)?;
+            let _r = self.recv_result_sync_ep(r)?;
+        }
+        Ok(())
+    }
+
+    async fn connect_async(
         &self,
         node_id: NID, address: SocketAddr,
         no_wait: bool,
-        return_ep: bool,
+        read_endpoint: bool,
     ) -> Res<Option<Arc<dyn EndpointAsync<M>>>> {
         trace!("channel name {}, send connect to {}", self.name, node_id);
-        if no_wait && !return_ep {
+        if no_wait && !read_endpoint {
             let event = NetEvent::NetConnect {
                 node_id,
+                return_endpoint: false,
                 address,
-                opt_sender: None,
-                return_endpoint: return_ep,
+                opt_sender: ResultSenderType::SendNone,
             };
             self.async_event(event)?;
             Ok(None)
         } else {
-            let (s, r) = oneshot::channel::<EventResult<M>>();
+            let (s, r) = oneshot::channel();
             let event = NetEvent::NetConnect {
                 node_id,
+                return_endpoint: read_endpoint,
                 address,
-                opt_sender: Some(s),
-                return_endpoint: return_ep,
+                opt_sender: ResultSenderType::Async(s),
             };
-            let event_result = self.wait_send_event_result(event, r).await?;
-            if !return_ep {
-                let _ = self.event_result(event_result)?;
-                Ok(None)
-            } else {
-                let opt_ep = self.event_result_endpoint(event_result)?;
-                Ok(opt_ep)
-            }
+            self.async_event(event)?;
+            let _r = self.recv_result_async_ep(r).await?;
+            Ok(_r)
         }
     }
 
+    fn connect_sync(
+        &self,
+        node_id: NID, address: SocketAddr,
+        no_wait: bool,
+        read_endpoint: bool,
+    ) -> Res<Option<Arc<dyn EndpointSync<M>>>> {
+        trace!("channel name {}, send connect to {}", self.name, node_id);
+        if no_wait && !read_endpoint {
+            let event = NetEvent::NetConnect {
+                node_id,
+                return_endpoint: false,
+                address,
+                opt_sender: ResultSenderType::SendNone,
+            };
+            self.async_event(event)?;
+            Ok(None)
+        } else {
+            let (s, r) = std::sync::mpsc::channel();
+            let event = NetEvent::NetConnect {
+                node_id,
+                return_endpoint: read_endpoint,
+                address,
+                opt_sender: ResultSenderType::Sync(s),
+            };
+            self.async_event(event)?;
+            let _r = self.recv_result_sync_ep(r)?;
+            Ok(_r)
+        }
+    }
 
     #[async_backtrace::framed]
-    pub async fn async_send(
+    pub async fn send_async(
         &self,
         msg: Message<M>,
         no_wait: bool,
-        read_resp: bool
+        read_resp: bool,
     ) -> Res<Option<Arc<dyn ReceiverResp<M>>>> {
         trace!("channel name {} send message {:?}", self.name, msg);
         if no_wait && !read_resp {
-            let ctrl = NetSendControl {
-                sender:None,
-                return_response: read_resp,
-            };
-            let event = NetEvent::NetSend(msg, ctrl);
+            let event = NetEvent::NetSend(msg, ResultSenderType::SendNone);
             self.async_event(event)?;
             trace!("channel name {} send message", self.name);
             Ok(None)
         } else {
-            let (s, r) = oneshot::channel::<EventResult<M>>();
-            let ctrl = NetSendControl {
-                sender: Some(s),
-                return_response: read_resp,
-            };
-            let event = NetEvent::NetSend(msg, ctrl);
-            let event_result = self.wait_send_event_result(event, r).await?;
-            let opt_ep = self.event_result_endpoint(event_result)?;
-            match opt_ep {
-                Some(ep) => {
-                    Ok(Some(Arc::new(MessageReceiverEndpoint::new(ep))))
-                }
-                None => {
-                    Ok(None)
-                }
-            }
+            let (s, r) = oneshot::channel();
+            let event = NetEvent::NetSend(msg, ResultSenderType::Async(s));
+            self.async_event(event)?;
+            let recv_r = self.recv_result_async_ep(r).await?;
+            let ret = recv_r.map(|e| -> Arc<dyn ReceiverResp<M>> {
+                Arc::new(MessageReceiverEndpoint::new(e))
+            });
+            Ok(ret)
         }
     }
 
-    pub async fn async_stop(&self, no_wait: bool) -> Res<()> {
+
+    pub fn send_sync(
+        &self,
+        msg: Message<M>,
+        no_wait: bool,
+    ) -> Res<()> {
+        trace!("channel name {} send message {:?}", self.name, msg);
         if no_wait {
-            let event = NetEvent::Stop(None);
+            let event = NetEvent::NetSend(msg, ResultSenderType::SendNone);
+            self.async_event(event)?;
+            trace!("channel name {} send message", self.name);
+            Ok(())
+        } else {
+            let (s, r) = std::sync::mpsc::channel();
+            let event = NetEvent::NetSend(msg, ResultSenderType::Sync(s));
+            self.async_event(event)?;
+            let _ = self.recv_result_sync_ep(r)?;
+            Ok(())
+        }
+    }
+
+    pub async fn stop_async(&self, no_wait: bool) -> Res<()> {
+        if no_wait {
+            let event = NetEvent::Stop(ResultSenderType::SendNone);
             self.async_event(event)
         } else {
-            let (s, r) = oneshot::channel::<EventResult<M>>();
-            let event = NetEvent::Stop(Some(s));
-            let event_result = self.wait_send_event_result(event, r).await?;
-            let _ = self.event_result(event_result)?;
+            let (s, r) = oneshot::channel();
+            let event = NetEvent::Stop(ResultSenderType::Async(s));
+            self.async_event(event)?;
+            let _ = self.recv_result(r).await?;
+            Ok(())
+        }
+    }
+
+    pub fn stop_sync(&self, no_wait: bool) -> Res<()> {
+        if no_wait {
+            let event = NetEvent::Stop(ResultSenderType::SendNone);
+            self.async_event(event)
+        } else {
+            let (s, r) = std::sync::mpsc::channel();
+            let event = NetEvent::Stop(ResultSenderType::Sync(s));
+            self.async_event(event)?;
+            let _ = self.recv_result_sync(r)?;
             Ok(())
         }
     }
@@ -150,53 +250,10 @@ impl<M: MsgTrait> EventSinkImpl<M> {
             }
         }
     }
-
-    fn event_result(&self, er: EventResult<M>) -> Res<()> {
-        match er {
-            EventResult::ErrorType(e) => {
-                match e {
-                    ET::OK => { Ok(()) }
-                    _ => { Err(e) }
-                }
-            }
-            EventResult::NetEndpoint(_ep) => {
-                panic!("not possible");
-            }
-        }
-    }
-
-    fn event_result_endpoint(&self, er: EventResult<M>) -> Res<Option<Arc<dyn EndpointAsync<M>>>> {
-        match er {
-            EventResult::ErrorType(e) => {
-                match e {
-                    ET::OK => { Ok(None) }
-                    _ => { Err(e) }
-                }
-            }
-            EventResult::NetEndpoint(ep) => {
-                let e = ep?;
-                Ok(Some(e))
-            }
-        }
-    }
-    async fn wait_send_event_result(&self, event: NetEvent<M>, receiver: ResultSenderType<M>) -> Res<EventResult<M>> {
-        self.async_event(event)?;
-        trace!("send event {}", self.name);
-        let r = receiver.await;
-        match r {
-            Ok(e) => {
-                Ok(e)
-            }
-            Err(e) => {
-                error!("{}", e.to_string());
-                Err(ET::RecvError(e.to_string()))
-            }
-        }
-    }
 }
 
 
-impl<M: MsgTrait + 'static> Clone for EventSinkImpl<M> {
+impl<M: MsgTrait + 'static> Clone for EventSenderImpl<M> {
     fn clone(&self) -> Self {
         Self {
             name: self.name.to_string(),
@@ -205,24 +262,75 @@ impl<M: MsgTrait + 'static> Clone for EventSinkImpl<M> {
     }
 }
 
-
+#[async_trait]
 impl<
     M: MsgTrait + 'static,
-> EventSink<M> for EventSinkImpl<
+> EventSinkAsync<M> for EventSenderImpl<
     M
 > {
-     fn stop(&self, opt: ESStopOpt) -> Res<()> {
-        self.async_stop(opt.no_wait()).await
+    async fn stop(&self, opt: ESStopOpt) -> Res<()> {
+        self.stop_async(opt.no_wait()).await
     }
 
-     fn serve(&self, addr: SocketAddr, opt: ESServeOpt) -> Res<()> {
-        self.async_serve(addr, opt.no_wait()).await
+    async fn serve(&self, addr: SocketAddr, opt: ESServeOpt) -> Res<()> {
+        self.serve_async(addr, opt.no_wait()).await
     }
 
     async fn connect(&self, node_id: NID, address: SocketAddr, opt: ESConnectOpt) -> Res<Option<Arc<dyn EndpointAsync<M>>>> {
-        self.async_connect(node_id, address, opt.no_wait(), opt.return_endpoint()).await
+        self.connect_async(node_id, address, opt.no_wait(), opt.return_endpoint()).await
     }
 }
 
 
-*/
+impl<
+    M: MsgTrait + 'static,
+> EventSinkSync<M> for EventSenderImpl<
+    M
+> {
+    fn stop(&self, opt: ESStopOpt) -> Res<()> {
+        self.stop_sync(opt.no_wait())
+    }
+
+    fn serve(&self, addr: SocketAddr, opt: ESServeOpt) -> Res<()> {
+        self.serve_sync(addr, opt.no_wait())
+    }
+
+    fn connect(&self, node_id: NID, address: SocketAddr, opt: ESConnectOpt) -> Res<Option<Arc<dyn EndpointSync<M>>>> {
+        self.connect_sync(node_id, address, opt.no_wait(), opt.return_endpoint())
+    }
+}
+
+#[async_trait]
+impl<
+    M: MsgTrait + 'static,
+> SenderAsync<M> for EventSenderImpl<
+    M> {
+    async fn send(&self, message: Message<M>, opt: OptSend) -> Res<()> {
+        let _ = self.send_sync(message, opt.is_enable_no_wait());
+        Ok(())
+    }
+}
+
+
+impl<
+    M: MsgTrait + 'static,
+> SenderSync<M> for EventSenderImpl<
+    M> {
+    fn send(&self, message: Message<M>, opt: OptSend) -> Res<()> {
+        let _ = self.send_sync(message, opt.is_enable_no_wait())?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl<
+    M: MsgTrait + 'static,
+> SenderRRAsync<M> for EventSenderImpl<M> {
+    async fn send(&self, message: Message<M>, _opt: OptSend) -> Res<Arc<dyn ReceiverResp<M>>> {
+        let opt = self.send_async(message, _opt.is_enable_no_wait(), true).await?;
+        match opt {
+            Some(recv) => { Ok(recv) }
+            None => { return Err(NoneOption); }
+        }
+    }
+}

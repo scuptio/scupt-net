@@ -1,6 +1,5 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
-
 use std::sync::mpsc::Sender as SyncSender;
 
 use futures::executor::block_on;
@@ -95,7 +94,7 @@ impl<M: MsgTrait + 'static> EndpointSyncImpl<M> {
         loop {
             let opt_channel = receiver.recv().await;
             let channel = match opt_channel {
-                Some(c) => { c}
+                Some(c) => { c }
                 None => { break; }
             };
             let r = self.endpoint.recv().await;

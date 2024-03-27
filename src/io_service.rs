@@ -29,7 +29,7 @@ pub struct IOService<M: MsgTrait> {
     node_id: NID,
     node: ServiceNode<M>,
     receiver_async: Vec<Arc<MessageReceiverChannelAsync<M>>>,
-    receiver_sync: Vec<Arc<MessageReceiverChannelSync<M>>>
+    receiver_sync: Vec<Arc<MessageReceiverChannelSync<M>>>,
 }
 
 
@@ -71,9 +71,9 @@ impl<M: MsgTrait> IOService<M> {
     }
 
     fn new(node_id: NID,
-               name: String,
-               opt: IOServiceOpt,
-               stop_notify: Notifier,
+           name: String,
+           opt: IOServiceOpt,
+           stop_notify: Notifier,
     ) -> Res<Self> {
         let handler = NetHandler::<M>::new(node_id.clone(),
                                            name.clone(),
@@ -171,7 +171,7 @@ impl<M: MsgTrait> IOService<M> {
             panic!("todo");
         }
         self.receiver_async.iter().map(|r| {
-            let m : Arc<dyn ReceiverRRAsync<M>> = r.clone();
+            let m: Arc<dyn ReceiverRRAsync<M>> = r.clone();
             m
         }).collect()
     }
@@ -215,7 +215,7 @@ impl<M: MsgTrait> IOServiceAsync<M> for IOService<M> {
         self.default_sender_rr_async()
     }
 
-    fn new_sender_rr(&self, name:String) -> Res<Arc<dyn SenderRRAsync<M>>> {
+    fn new_sender_rr(&self, name: String) -> Res<Arc<dyn SenderRRAsync<M>>> {
         self.new_sender_rr_async(name)
     }
 }

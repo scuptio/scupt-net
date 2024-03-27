@@ -36,7 +36,7 @@ impl<M: MsgTrait + 'static> EndpointAsync<M> for EndpointAsyncImpl {
 }
 
 impl EndpointAsyncImpl {
-    pub fn new(stream: TcpStream, remote_address: SocketAddr, opt_ep:OptEP) -> Self {
+    pub fn new(stream: TcpStream, remote_address: SocketAddr, opt_ep: OptEP) -> Self {
         Self {
             _ep: Arc::new(_Endpoint::new(stream, remote_address, opt_ep.is_enable_dtm_test())),
         }

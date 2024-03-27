@@ -19,29 +19,28 @@ use crate::node::Node;
 use crate::notifier::Notifier;
 
 #[derive(Clone)]
-pub struct Client<M:MsgTrait + 'static> {
+pub struct Client<M: MsgTrait + 'static> {
     inner: Arc<ClientInner<M>>,
 }
-pub struct ClientInner<M:MsgTrait +'static> {
-    nid:NID,
-    addr:String,
-    node:Node<M, Handler>,
+
+pub struct ClientInner<M: MsgTrait + 'static> {
+    nid: NID,
+    addr: String,
+    node: Node<M, Handler>,
     opt_endpoint: Mutex<Option<Arc<dyn EndpointAsync<M>>>>,
 }
 
 
-struct Handler {
+struct Handler {}
 
-}
-
-impl <M:MsgTrait +'static> Client<M> {
-    pub fn new(node_id:NID, name:String, addr:String, opt_client: OptClient, notifier:Notifier) -> Res<Self> {
+impl<M: MsgTrait + 'static> Client<M> {
+    pub fn new(node_id: NID, name: String, addr: String, opt_client: OptClient, notifier: Notifier) -> Res<Self> {
         Ok(Self {
-            inner:Arc::new(ClientInner::new(node_id, name, addr, opt_client, notifier)?)
+            inner: Arc::new(ClientInner::new(node_id, name, addr, opt_client, notifier)?)
         })
     }
 
-    pub fn run(&self, local:&LocalSet) {
+    pub fn run(&self, local: &LocalSet) {
         self.inner.run(local);
     }
 
@@ -49,11 +48,11 @@ impl <M:MsgTrait +'static> Client<M> {
         self.inner.is_connected().await
     }
 
-    pub async fn connect(&self, opt:OptClientConnect) -> Res<()> {
+    pub async fn connect(&self, opt: OptClientConnect) -> Res<()> {
         self.inner.connect(opt).await
     }
 
-    pub async fn send(&self, message:Message<M>) -> Res<()> {
+    pub async fn send(&self, message: Message<M>) -> Res<()> {
         self.inner.send(message).await
     }
 
@@ -77,11 +76,12 @@ impl Handler {
 }
 
 pub struct OptClient {
-    pub enable_testing:bool,
+    pub enable_testing: bool,
 }
+
 pub struct OptClientConnect {
-    pub retry_max:u64,
-    pub retry_wait_ms:u64
+    pub retry_max: u64,
+    pub retry_wait_ms: u64,
 }
 
 impl OptClientConnect {
@@ -99,8 +99,8 @@ impl Default for OptClientConnect {
     }
 }
 
-impl <M:MsgTrait +'static> ClientInner<M> {
-    pub fn new(node_id:NID, name:String, addr:String, opt:OptClient, notifier: Notifier) -> Res<Self> {
+impl<M: MsgTrait + 'static> ClientInner<M> {
+    pub fn new(node_id: NID, name: String, addr: String, opt: OptClient, notifier: Notifier) -> Res<Self> {
         let r = Self {
             nid: node_id.clone(),
             addr,
@@ -110,7 +110,7 @@ impl <M:MsgTrait +'static> ClientInner<M> {
         Ok(r)
     }
 
-    pub fn run(&self, local:&LocalSet) {
+    pub fn run(&self, local: &LocalSet) {
         self.node.run_local(local);
     }
 
@@ -119,7 +119,7 @@ impl <M:MsgTrait +'static> ClientInner<M> {
         g.is_some()
     }
 
-    pub async fn connect(&self, opt:OptClientConnect) -> Res<()> {
+    pub async fn connect(&self, opt: OptClientConnect) -> Res<()> {
         let mut opt_ep = None;
         let mut n = opt.retry_max;
         while opt.retry_max == 0 || n > 0 {
@@ -147,11 +147,11 @@ impl <M:MsgTrait +'static> ClientInner<M> {
         Ok(())
     }
 
-    pub async fn send(&self, message:Message<M>) -> Res<()> {
+    pub async fn send(&self, message: Message<M>) -> Res<()> {
         let guard = self.opt_endpoint.lock().await;
         if let Some(e) = &(*guard) {
             e.send(message).await?;
-            return Ok(())
+            return Ok(());
         } else {
             Err(ET::NetNotConnected)
         }
@@ -161,7 +161,7 @@ impl <M:MsgTrait +'static> ClientInner<M> {
         let guard = self.opt_endpoint.lock().await;
         if let Some(e) = &(*guard) {
             let m = e.recv().await?;
-            return Ok(m)
+            return Ok(m);
         } else {
             Err(ET::NetNotConnected)
         }
@@ -178,11 +178,7 @@ impl<M: MsgTrait + 'static> HandleEvent<M> for Handler {
         Ok(())
     }
 
-    async fn on_error(&self, _: ET) {
+    async fn on_error(&self, _: ET) {}
 
-    }
-
-    async fn on_stop(&self) {
-
-    }
+    async fn on_stop(&self) {}
 }

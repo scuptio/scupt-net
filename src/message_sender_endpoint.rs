@@ -8,12 +8,12 @@ use scupt_util::res::Res;
 use crate::endpoint_async::EndpointAsync;
 use crate::message_sender_async::SenderRespAsync;
 
-pub struct  MessageSenderEndpoint<M:MsgTrait + 'static> {
+pub struct MessageSenderEndpoint<M: MsgTrait + 'static> {
     ep: Arc<dyn EndpointAsync<M>>,
-    _pd : PhantomData<M>
+    _pd: PhantomData<M>,
 }
 
-impl <M:MsgTrait + 'static> MessageSenderEndpoint<M> {
+impl<M: MsgTrait + 'static> MessageSenderEndpoint<M> {
     pub fn new(ep: Arc<dyn EndpointAsync<M>>) -> Self {
         Self {
             ep,
@@ -23,7 +23,7 @@ impl <M:MsgTrait + 'static> MessageSenderEndpoint<M> {
 }
 
 #[async_trait]
-impl <M:MsgTrait + 'static> SenderRespAsync<M> for MessageSenderEndpoint<M> {
+impl<M: MsgTrait + 'static> SenderRespAsync<M> for MessageSenderEndpoint<M> {
     async fn send(&self, m: Message<M>) -> Res<()> {
         self.ep.send(m).await?;
         Ok(())

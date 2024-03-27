@@ -17,7 +17,7 @@ use tracing::{error, Instrument, trace, trace_span};
 use crate::endpoint_async::EndpointAsync;
 use crate::endpoint_sync::EndpointSync;
 use crate::endpoint_sync_impl::EndpointSyncImpl;
-use crate::event_sink_async_impl::EventSenderImpl;
+use crate::event_sink_impl::EventSenderImpl;
 use crate::handle_event::HandleEvent;
 use crate::message_channel::{MessageChAsyncSender, MessageChSyncSender};
 use crate::message_receiver_channel_async::MessageReceiverChannelAsync;
@@ -186,7 +186,6 @@ impl<M: MsgTrait> InnerNetHandler<M> {
                 Err(e) => { Err(ET::TokioSenderError(e.to_string())) }
             }
         }
-
     }
 
 

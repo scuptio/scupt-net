@@ -1,8 +1,7 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool,  Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::sync::Notify;
-
 use tracing::trace;
 
 // Notifies tasks to wake up.
@@ -17,7 +16,7 @@ pub struct Notifier {
 
 pub struct NotifyInner {
     stop_notifier: Notify,
-    stopped: AtomicBool
+    stopped: AtomicBool,
 }
 
 impl Default for Notifier {
@@ -68,7 +67,7 @@ impl NotifyInner {
     fn new() -> Self {
         Self {
             stopped: AtomicBool::new(false),
-            stop_notifier: Notify::new()
+            stop_notifier: Notify::new(),
         }
     }
 

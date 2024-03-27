@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use bincode::{Decode, Encode};
 use scupt_util::error_type::ET;
-
 use scupt_util::logger::logger_setup;
 use scupt_util::message::{Message, MsgTrait};
 use scupt_util::node_id::NID;
@@ -309,14 +308,13 @@ fn test_service_sync(
                 let b = barrier.clone();
                 let node_id = service.node_id();
                 let thd = std::thread::spawn(move || {
-
-                        let r = connect_sync(node_id.clone(), sink.clone(), addrs.clone());
-                        trace!("before wait, connect done {}, {:?}", node_id, r);
-                        let _ = b.wait();
-                        trace!("after wait, connect done {}", node_id);
-                        assert!(r.is_ok());
-                        let r = send_sync(node_id.clone(), 10, sender.clone(), addrs.clone());
-                        assert!(r.is_ok());
+                    let r = connect_sync(node_id.clone(), sink.clone(), addrs.clone());
+                    trace!("before wait, connect done {}, {:?}", node_id, r);
+                    let _ = b.wait();
+                    trace!("after wait, connect done {}", node_id);
+                    assert!(r.is_ok());
+                    let r = send_sync(node_id.clone(), 10, sender.clone(), addrs.clone());
+                    assert!(r.is_ok());
 
                     trace!("{} {} sender thread exit", node_id, i);
                 });
@@ -347,7 +345,6 @@ fn test_service_sync(
                 //assert!(r.is_ok());
             }
             trace!("stop thread exit");
-
         });
         threads.push(stop_thd);
     }
@@ -456,16 +453,16 @@ async fn send_async(
         let id = i + 1;
 
         for (node_id, _) in &addrs {
-            let message = Message::new(TestMsg::Id(id), service_node_id,  node_id.clone());
+            let message = Message::new(TestMsg::Id(id), service_node_id, node_id.clone());
             sender.send(message.clone(), OptSend::default()).await?;
         }
         for (node_id, _) in &addrs {
-            let message = Message::new(TestMsg::Id(id), service_node_id,  node_id.clone());
+            let message = Message::new(TestMsg::Id(id), service_node_id, node_id.clone());
             sender.send(message.clone(), OptSend::default()).await?;
         }
     }
 
-    let message = Message::new(TestMsg::Stop(service_node_id),service_node_id,  service_node_id);
+    let message = Message::new(TestMsg::Stop(service_node_id), service_node_id, service_node_id);
     sender.send(message, OptSend::default()).await?;
 
     trace!("send done {}", service_node_id);
@@ -482,16 +479,16 @@ fn send_sync(
         let id = i + 1;
 
         for (node_id, _) in &addrs {
-            let message = Message::new(TestMsg::Id(id), service_node_id,  node_id.clone());
+            let message = Message::new(TestMsg::Id(id), service_node_id, node_id.clone());
             sender.send(message.clone(), OptSend::default())?;
         }
         for (node_id, _) in &addrs {
-            let message = Message::new(TestMsg::Id(id), service_node_id,  node_id.clone());
+            let message = Message::new(TestMsg::Id(id), service_node_id, node_id.clone());
             sender.send(message.clone(), OptSend::default())?;
         }
     }
 
-    let message = Message::new(TestMsg::Stop(service_node_id),service_node_id,  service_node_id);
+    let message = Message::new(TestMsg::Stop(service_node_id), service_node_id, service_node_id);
     sender.send(message, OptSend::default())?;
 
     trace!("send done {}", service_node_id);

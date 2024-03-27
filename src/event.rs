@@ -51,7 +51,7 @@ pub enum NetEvent<
     NewEventChannel(Arc<EventChannel<M>>),
 }
 
-impl <M:MsgTrait + 'static> Debug for NetEvent<M> {
+impl<M: MsgTrait + 'static> Debug for NetEvent<M> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             NetEvent::NetConnect {
@@ -66,7 +66,7 @@ impl <M:MsgTrait + 'static> Debug for NetEvent<M> {
             NetEvent::NetListen(address, _) => {
                 write!(f, "NetListen({:?})", address)?;
             }
-            NetEvent::NetSend( m, _) => {
+            NetEvent::NetSend(m, _) => {
                 write!(f, "NetSend({:?})", m)?;
             }
             NetEvent::Stop(_) => {

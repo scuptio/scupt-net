@@ -2,9 +2,9 @@ use std::future::Future;
 use std::time::Duration;
 
 use scupt_util::res::Res;
-use tokio::time::sleep;
 use tokio::{select, task};
 use tokio::task::JoinHandle;
+use tokio::time::sleep;
 use tracing::trace;
 
 use crate::notifier::Notifier;
@@ -51,7 +51,7 @@ pub fn spawn_local_task_timeout<F>(
     cancel_notifier: Notifier,
     duration: Duration,
     _name: &str,
-    future: F
+    future: F,
 ) -> Res<JoinHandle<Result<F::Output, TaskFailed>>>
     where
         F: Future + Send + 'static,
@@ -91,6 +91,7 @@ pub fn spawn_task<F>(cancel_notifier: Notifier, duration: Duration, name: &str, 
         Err(e) => Err(scupt_util::error_type::ET::FatalError(e.to_string()))
     }
 }
+
 async fn __select_local_till_done<F>(notify: Notifier, future: F) -> Option<F::Output>
     where
         F: Future + 'static,
@@ -118,7 +119,7 @@ pub enum TaskFailed {
     Timeout,
 }
 
-async fn __select_local_till_done_or_timeout<F>(notify: Notifier, duration:Duration, future: F) -> Result<F::Output, TaskFailed>
+async fn __select_local_till_done_or_timeout<F>(notify: Notifier, duration: Duration, future: F) -> Result<F::Output, TaskFailed>
     where
         F: Future + 'static,
         F::Output: 'static,
