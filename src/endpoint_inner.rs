@@ -25,7 +25,7 @@ pub struct _Endpoint {
     sender: Mutex<SplitSink<Framed<TcpStream, FramedCodec>, BytesMut>>,
     receiver: Mutex<SplitStream<Framed<TcpStream, FramedCodec>>>,
     remote_address: SocketAddr,
-    // is enable DTM testing, default is false
+    // is enabled DTM testing, default is false
     // when this option was enabling, the incoming message would be parse as ActionMessage
     enable_dtm_test: bool,
 }

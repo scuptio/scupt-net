@@ -27,5 +27,7 @@ rand = "0.8.5"
 tracing = { version = "0.1.37" }
 console-subscriber = "0.1.10"
 async-backtrace = "0.2.6"
-
+lazy_static = "1.4.0"
+scc = "2.0.18"
+uuid = { version = "1.6.1", features = ["v4"] }
 
