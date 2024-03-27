@@ -1,17 +1,20 @@
 use std::marker::PhantomData;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use scupt_util::message::{Message, MsgTrait};
 use scupt_util::res::Res;
-use crate::endpoint::Endpoint;
-use crate::message_receiver::ReceiverResp;
+
+use crate::endpoint_async::EndpointAsync;
+use crate::message_receiver_async::ReceiverResp;
 
 pub struct  MessageReceiverEndpoint<M:MsgTrait + 'static> {
-    ep : Endpoint,
+    ep: Arc<dyn EndpointAsync<M>>,
     _pd : PhantomData<M>
 }
 
 impl <M:MsgTrait + 'static> MessageReceiverEndpoint<M> {
-    pub fn new(ep:Endpoint) -> Self {
+    pub fn new(ep: Arc<dyn EndpointAsync<M>>) -> Self {
         Self {
             ep,
             _pd: Default::default(),

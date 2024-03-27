@@ -12,8 +12,8 @@ use tokio::sync::Mutex;
 use tokio::task::LocalSet;
 use tokio::time::sleep;
 
-use crate::endpoint::Endpoint;
-use crate::event_sink::ESConnectOption;
+use crate::endpoint_async::EndpointAsync;
+use crate::es_option::ESConnectOption;
 use crate::handle_event::HandleEvent;
 use crate::node::Node;
 use crate::notifier::Notifier;
@@ -26,7 +26,7 @@ pub struct ClientInner<M:MsgTrait +'static> {
     nid:NID,
     addr:String,
     node:Node<M, Handler>,
-    opt_endpoint: Mutex<Option<Endpoint>>,
+    opt_endpoint: Mutex<Option<Arc<dyn EndpointAsync<M>>>>,
 }
 
 
@@ -169,12 +169,12 @@ impl <M:MsgTrait +'static> ClientInner<M> {
 }
 
 #[async_trait]
-impl HandleEvent for Handler {
-    async fn on_accepted(&self, _: Endpoint) -> Res<()> {
+impl<M: MsgTrait + 'static> HandleEvent<M> for Handler {
+    async fn on_accepted(&self, _: Arc<dyn EndpointAsync<M>>) -> Res<()> {
         Ok(())
     }
 
-    async fn on_connected(&self, _: SocketAddr, _: Res<Endpoint>) -> Res<()> {
+    async fn on_connected(&self, _: SocketAddr, _: Res<Arc<dyn EndpointAsync<M>>>) -> Res<()> {
         Ok(())
     }
 

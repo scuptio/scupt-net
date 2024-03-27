@@ -1,3 +1,4 @@
+/*
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -9,22 +10,25 @@ use scupt_util::node_id::NID;
 use scupt_util::res::Res;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, trace};
+use crate::endpoint_async::EndpointAsync;
 
-use crate::endpoint::Endpoint;
+
 use crate::event::{EventResult, NetEvent, NetSendControl, ResultReceiver};
-use crate::event_sink::{ESConnectOpt, ESServeOpt, ESStopOpt, EventSink};
+use crate::es_option::{ESConnectOpt, ESServeOpt, ESStopOpt};
+use crate::event_sink::EventSink;
+use crate::event_sink_async::EventSinkAsync;
 use crate::message_receiver::ReceiverResp;
 use crate::message_sender::{Sender, SenderRR};
 use crate::message_receiver_endpoint::MessageReceiverEndpoint;
 
 use crate::opt_send::OptSend;
 
-pub struct EventSenderImpl<M: MsgTrait> {
+pub struct EventSinkImpl<M: MsgTrait> {
     name: String,
     sender: mpsc::UnboundedSender<NetEvent<M>>,
 }
 
-impl<M: MsgTrait> EventSenderImpl<M> {
+impl<M: MsgTrait> EventSinkImpl<M> {
     pub fn new(name: String, sender: mpsc::UnboundedSender<NetEvent<M>>) -> Self {
         Self {
             name,
@@ -42,7 +46,7 @@ impl<M: MsgTrait> EventSenderImpl<M> {
             let event = NetEvent::NetListen(addr, None);
             self.async_event(event)
         } else {
-            let (s, r) = oneshot::channel::<EventResult>();
+            let (s, r) = oneshot::channel::<EventResult<M>>();
             let event = NetEvent::NetListen(addr, Some(s));
             let event_result = self.wait_send_event_result(event, r).await?;
             let _ = self.event_result(event_result)?;
@@ -55,7 +59,7 @@ impl<M: MsgTrait> EventSenderImpl<M> {
         node_id: NID, address: SocketAddr,
         no_wait: bool,
         return_ep: bool,
-    ) -> Res<Option<Endpoint>> {
+    ) -> Res<Option<Arc<dyn EndpointAsync<M>>>> {
         trace!("channel name {}, send connect to {}", self.name, node_id);
         if no_wait && !return_ep {
             let event = NetEvent::NetConnect {
@@ -67,7 +71,7 @@ impl<M: MsgTrait> EventSenderImpl<M> {
             self.async_event(event)?;
             Ok(None)
         } else {
-            let (s, r) = oneshot::channel::<EventResult>();
+            let (s, r) = oneshot::channel::<EventResult<M>>();
             let event = NetEvent::NetConnect {
                 node_id,
                 address,
@@ -104,7 +108,7 @@ impl<M: MsgTrait> EventSenderImpl<M> {
             trace!("channel name {} send message", self.name);
             Ok(None)
         } else {
-            let (s, r) = oneshot::channel::<EventResult>();
+            let (s, r) = oneshot::channel::<EventResult<M>>();
             let ctrl = NetSendControl {
                 sender: Some(s),
                 return_response: read_resp,
@@ -128,7 +132,7 @@ impl<M: MsgTrait> EventSenderImpl<M> {
             let event = NetEvent::Stop(None);
             self.async_event(event)
         } else {
-            let (s, r) = oneshot::channel::<EventResult>();
+            let (s, r) = oneshot::channel::<EventResult<M>>();
             let event = NetEvent::Stop(Some(s));
             let event_result = self.wait_send_event_result(event, r).await?;
             let _ = self.event_result(event_result)?;
@@ -147,7 +151,7 @@ impl<M: MsgTrait> EventSenderImpl<M> {
         }
     }
 
-    fn event_result(&self, er: EventResult) -> Res<()> {
+    fn event_result(&self, er: EventResult<M>) -> Res<()> {
         match er {
             EventResult::ErrorType(e) => {
                 match e {
@@ -161,7 +165,7 @@ impl<M: MsgTrait> EventSenderImpl<M> {
         }
     }
 
-    fn event_result_endpoint(&self, er: EventResult) -> Res<Option<Endpoint>> {
+    fn event_result_endpoint(&self, er: EventResult<M>) -> Res<Option<Arc<dyn EndpointAsync<M>>>> {
         match er {
             EventResult::ErrorType(e) => {
                 match e {
@@ -175,7 +179,7 @@ impl<M: MsgTrait> EventSenderImpl<M> {
             }
         }
     }
-    async fn wait_send_event_result(&self, event: NetEvent<M>, receiver: ResultReceiver) -> Res<EventResult> {
+    async fn wait_send_event_result(&self, event: NetEvent<M>, receiver: ResultSenderType<M>) -> Res<EventResult<M>> {
         self.async_event(event)?;
         trace!("send event {}", self.name);
         let r = receiver.await;
@@ -192,7 +196,7 @@ impl<M: MsgTrait> EventSenderImpl<M> {
 }
 
 
-impl<M: MsgTrait + 'static> Clone for EventSenderImpl<M> {
+impl<M: MsgTrait + 'static> Clone for EventSinkImpl<M> {
     fn clone(&self) -> Self {
         Self {
             name: self.name.to_string(),
@@ -201,45 +205,24 @@ impl<M: MsgTrait + 'static> Clone for EventSenderImpl<M> {
     }
 }
 
-#[async_trait]
+
 impl<
     M: MsgTrait + 'static,
-> EventSink for EventSenderImpl<
+> EventSink<M> for EventSinkImpl<
     M
 > {
-    async fn stop(&self, opt: ESStopOpt) -> Res<()> {
+     fn stop(&self, opt: ESStopOpt) -> Res<()> {
         self.async_stop(opt.no_wait()).await
     }
 
-    async fn serve(&self, addr: SocketAddr, opt: ESServeOpt) -> Res<()> {
+     fn serve(&self, addr: SocketAddr, opt: ESServeOpt) -> Res<()> {
         self.async_serve(addr, opt.no_wait()).await
     }
 
-    async fn connect(&self, node_id: NID, address: SocketAddr, opt: ESConnectOpt) -> Res<Option<Endpoint>> {
+    async fn connect(&self, node_id: NID, address: SocketAddr, opt: ESConnectOpt) -> Res<Option<Arc<dyn EndpointAsync<M>>>> {
         self.async_connect(node_id, address, opt.no_wait(), opt.return_endpoint()).await
     }
 }
 
-#[async_trait]
-impl<
-    M: MsgTrait + 'static,
-> Sender<M> for EventSenderImpl<
-    M> {
-    async fn send(&self, message: Message<M>, opt: OptSend) -> Res<()> {
-        let _ = self.async_send(message, opt.is_enable_no_wait(), false).await?;
-        Ok(())
-    }
-}
 
-#[async_trait]
-impl<
-    M: MsgTrait + 'static,
-> SenderRR<M> for EventSenderImpl<M> {
-    async fn send(&self, message: Message<M>, _opt: OptSend) -> Res<Arc<dyn ReceiverResp<M>>> {
-        let opt = self.async_send(message, _opt.is_enable_no_wait(), true).await?;
-        match opt {
-            Some(recv) => { Ok(recv) }
-            None => { return Err(NoneOption) }
-        }
-    }
-}
+*/

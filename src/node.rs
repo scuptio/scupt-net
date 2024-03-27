@@ -11,12 +11,17 @@ use tokio::runtime::Runtime;
 use tokio::task::LocalSet;
 use tracing::{error, Instrument, trace, trace_span};
 
-use crate::endpoint::Endpoint;
-use crate::event::{EventResult, NetEvent, ResultSender};
+use crate::endpoint_async::EndpointAsync;
+use crate::endpoint_async_impl::EndpointAsyncImpl;
+use crate::endpoint_sync::EndpointSync;
+use crate::endpoint_sync_impl::EndpointSyncImpl;
+use crate::event::{NetEvent, ResultSenderType};
 use crate::event_channel::EventReceiver;
-use crate::event_sink::EventSink;
+use crate::event_sink_async::EventSinkAsync;
+use crate::event_sink_sync::EventSinkSync;
 use crate::handle_event::HandleEvent;
-use crate::message_sender::{Sender, SenderRR};
+use crate::message_sender_async::{SenderAsync, SenderRRAsync};
+use crate::message_sender_sync::SenderSync;
 use crate::net_handler::NodeSender;
 use crate::node_context::NodeContext;
 use crate::notifier::Notifier;
@@ -26,7 +31,7 @@ use crate::task::spawn_local_task;
 #[derive(Clone)]
 pub struct Node<
     M: MsgTrait + 'static,
-    H: HandleEvent + 'static
+    H: HandleEvent<M> + 'static
 > {
     _node_id: NID,
     handle: Arc<H>,
@@ -37,7 +42,7 @@ pub struct Node<
 
 impl<
     M: MsgTrait + 'static,
-    H: HandleEvent + 'static
+    H: HandleEvent<M> + 'static
 >
 Node<
     M,
@@ -72,16 +77,25 @@ Node<
         });
     }
 
-    pub fn new_event_channel(&self, name: String) -> Res<Arc<dyn EventSink>> {
+    pub fn new_event_channel(&self, name: String) -> Res<Arc<dyn EventSinkAsync<M>>> {
         let r = self.node_context.new_event_channel(name)?;
         Ok(r)
     }
-    pub fn new_message_sender(&self, name: String) -> Res<Arc<dyn Sender<M>>> {
+
+    pub fn new_event_channel_sync(&self, name: String) -> Res<Arc<dyn EventSinkSync<M>>> {
+        let r = self.node_context.new_event_channel(name)?;
+        Ok(r)
+    }
+    pub fn new_message_sender_async(&self, name: String) -> Res<Arc<dyn SenderAsync<M>>> {
+        let s = self.node_context.new_message_sender(name)?;
+        Ok(s)
+    }
+    pub fn new_message_sender_sync(&self, name: String) -> Res<Arc<dyn SenderSync<M>>> {
         let s = self.node_context.new_message_sender(name)?;
         Ok(s)
     }
 
-    pub fn new_message_sender_rr(&self, name: String) -> Res<Arc<dyn SenderRR<M>>> {
+    pub fn new_message_sender_rr(&self, name: String) -> Res<Arc<dyn SenderRRAsync<M>>> {
         let s = self.node_context.new_message_sender(name)?;
         Ok(s)
     }
@@ -90,16 +104,22 @@ Node<
         self.node_context.stop_notify()
     }
 
-    pub fn default_event_sink(&self) -> Arc<dyn EventSink> {
-        Arc::new(self.node_event_sender())
+    pub fn default_event_sink(&self) -> Arc<dyn EventSinkAsync<M>> {
+        Arc::new(self.node_event_sink())
+    }
+    pub fn default_event_sink_sync(&self) -> Arc<dyn EventSinkSync<M>> {
+        Arc::new(self.node_event_sink())
+    }
+    pub fn default_message_sender_async(&self) -> Arc<dyn SenderAsync<M>> {
+        Arc::new(self.node_event_sink())
     }
 
-    pub fn default_message_sender(&self) -> Arc<dyn Sender<M>> {
-        Arc::new(self.node_event_sender())
+    pub fn default_message_sender_sync(&self) -> Arc<dyn SenderSync<M>> {
+        Arc::new(self.node_event_sink())
     }
 
-    pub fn default_message_sender_rr(&self) -> Arc<dyn SenderRR<M>> {
-        Arc::new(self.node_event_sender())
+    pub fn default_message_sender_rr(&self) -> Arc<dyn SenderRRAsync<M>> {
+        Arc::new(self.node_event_sink())
     }
 
     pub fn run_local(&self, local_set: &LocalSet) {
@@ -186,19 +206,19 @@ Node<
         match event {
             NetEvent::NetConnect {
                 node_id,
+                return_endpoint,
                 address,
                 opt_sender,
-                return_endpoint
             } => {
                 let id = node.name().clone();
                 trace!("node {}: handle event: connect {}", id, node_id);
                 Self::handle_event_connect(
                     node,
+                    return_endpoint,
                     node_id,
                     address,
                     handle,
                     opt_sender,
-                    return_endpoint,
                     enable_testing
                 );
                 trace!("node {}: handle event:connect {} done", id, node_id);
@@ -215,43 +235,22 @@ Node<
                 );
                 trace!("node {}: handle event: listen {} done", id, address.to_string());
             }
-            NetEvent::NetSend(message, ctrl) => {
-                let return_response = ctrl.return_response;
-                let opt_s = ctrl.sender;
+            NetEvent::NetSend(message, result) => {
                 let node_id = message.dest();
-                trace!("handle event: send {:?}", message);
-                let r = Self::handle_send_message(
+                Self::handle_send_message(
                     node,
                     node_id,
+                    false,
                     message,
-                    return_response
-                ).await;
-                let er = if return_response {
-                    let ret = match r {
-                        Ok(opt_ep) => {
-                            if let Some(ep) = opt_ep {
-                                Ok(ep)
-                            } else {
-                                Err(ET::NoneOption)
-                            }
-                        }
-                        Err(e) => {
-                            Err(e)
-                        }
-                    };
-                    EventResult::NetEndpoint(ret)
-                } else {
-                    EventResult::ErrorType(r.err().unwrap_or(ET::OK))
-                };
-                Self::handle_opt_send_result(er, opt_s);
-                trace!("handle event: send done");
+                    result
+                ).await?;
             }
             NetEvent::Stop(opt_s) => {
                 let stop_notify = node.stop_notify();
                 let _ = spawn_local_task(stop_notify, "stop and notify", async move {
                     node.stop_and_notify().await;
                     handle.on_stop().await;
-                    Self::handle_opt_send_result(EventResult::ErrorType(ET::OK), opt_s);
+                    Self::handle_opt_send_result(None, Some(Ok(())), opt_s);
                 })?;
                 return Err(ET::EOF);
             }
@@ -272,16 +271,27 @@ Node<
     async fn handle_send_message(
         node: Arc<NodeContext<M>>,
         node_id: NID,
+        return_endpoint: bool,
         message: Message<M>,
-        return_response:bool,
-    ) -> Res<Option<Endpoint>> {
-        let ep = node.get_endpoint(node_id).await?;
-        ep.send(message).await?;
-        if return_response {
-            Ok(Some(ep))
-        } else {
-            Ok(None)
-        }
+        result_sender: ResultSenderType<
+            Res<Option<Arc<dyn EndpointSync<M>>>>,
+            Res<Option<Arc<dyn EndpointAsync<M>>>>
+        >
+    ) -> Res<()> {
+        let _m = message.clone();
+        let ep_result = node.get_endpoint(node_id).await;
+        let ep_result = match ep_result {
+            Ok(e) => {
+                e.send(message).await?;
+                Ok(e)
+            }
+            Err(e) => {
+                Err(e)
+            }
+        };
+        let (s_r, a_r) = Self::handle_result_endpoint(&node, return_endpoint, ep_result, &result_sender);
+        Self::handle_opt_send_result(s_r, a_r, result_sender);
+        Ok(())
     }
 
     #[async_backtrace::framed]
@@ -310,11 +320,14 @@ Node<
     #[async_backtrace::framed]
     fn handle_event_connect(
         node: Arc<NodeContext<M>>,
+        return_endpoint: bool,
         node_id: NID,
         address: SocketAddr,
         handle: Arc<H>,
-        opt_sender: Option<ResultSender>,
-        return_endpoint: bool,
+        opt_sender: ResultSenderType<
+            Res<Option<Arc<dyn EndpointSync<M>>>>,
+            Res<Option<Arc<dyn EndpointAsync<M>>>>
+        >,
         enable_testing:bool
     ) {
         let node_name = node.name().clone();
@@ -324,9 +337,8 @@ Node<
         let task_name2 = task_name.clone();
         let on_connected = async move {
             Self::task_handle_connected(
-                node, node_id,
+                node, return_endpoint, node_id,
                 address, handle, opt_sender,
-                return_endpoint,
                 enable_testing
             ).await;
             trace!("on connected done {}", task_name2);
@@ -340,31 +352,36 @@ Node<
 
     async fn task_handle_connected(
         node: Arc<NodeContext<M>>,
+        return_endpoint: bool,
         node_id: NID,
         address: SocketAddr,
         handle: Arc<H>,
-        opt_sender: Option<ResultSender>,
-        return_endpoint: bool,
+        opt_sender: ResultSenderType<
+            Res<Option<Arc<dyn EndpointSync<M>>>>,
+            Res<Option<Arc<dyn EndpointAsync<M>>>>
+        >,
         enable_testing:bool
     ) {
         trace!("{} task handle connect to {} {}", node.name(), node_id, address.to_string());
         let r_connect = TcpStream::connect(address).await;
         trace!("{} task handle connect done, to {} {} ", node.name(), node_id, address.to_string());
 
-        let result = {
+        let result_endpoint = {
             match res_io(r_connect) {
                 Ok(s) => {
                     let r_addr = s.peer_addr();
                     match res_io(r_addr) {
                         Ok(addr) => {
                             let opt = OptEP::new().enable_dtm_test(enable_testing);
-                            let ep = Endpoint::new(s, addr, opt);
-                            {
+                            let ep: Arc<dyn EndpointAsync<M>> = Arc::new(EndpointAsyncImpl::new(s, addr, opt));
+                            if !return_endpoint {
                                 let r = node.add_endpoint(node_id, ep.clone()).await;
                                 match r {
                                     Ok(()) => { Ok(ep) }
                                     Err(e) => { Err(e) }
                                 }
+                            } else {
+                                Ok(ep)
                             }
                         }
                         Err(_e) => { Err(_e) }
@@ -377,23 +394,14 @@ Node<
         };
         match handle.on_connected(
             address,
-            result.clone()).await {
+            result_endpoint.clone()).await {
             Ok(_) => {}
             Err(e) => {
                 handle.on_error(e).await;
             }
         };
-        let er = if return_endpoint {
-            match result {
-                Ok(ep) => { EventResult::NetEndpoint(Ok(ep)) }
-                Err(e) => {
-                    EventResult::ErrorType(e)
-                }
-            }
-        } else {
-            EventResult::ErrorType(result.err().unwrap_or(ET::OK))
-        };
-        Self::handle_opt_send_result(er, opt_sender);
+        let (s_r, a_r) = Self::handle_result_endpoint(&node, return_endpoint, result_endpoint, &opt_sender);
+        Self::handle_opt_send_result(s_r, a_r, opt_sender);
         trace!("{} task handle connect done, on connected, to {} {} ", node.name(), node_id, address.to_string());
     }
 
@@ -402,7 +410,10 @@ Node<
         node: Arc<NodeContext<M>>,
         address: SocketAddr,
         handle: Arc<H>,
-        opt_sender: Option<ResultSender>,
+        opt_sender: ResultSenderType<
+            Res<Option<Arc<dyn EndpointSync<M>>>>,
+            Res<Option<Arc<dyn EndpointAsync<M>>>>
+        >,
         enable_testing:bool
     ) -> Res<()> {
         let node_id = node.node_id();
@@ -413,12 +424,12 @@ Node<
             let r_bind = TcpListener::bind(address.to_string()).await;
             let listener = match res_io(r_bind) {
                 Ok(l) => {
-                    Self::handle_opt_send_result(EventResult::ErrorType(ET::OK), opt_sender);
+                    Self::handle_opt_send_result(Some(Ok(None)), Some(Ok(None)), opt_sender);
                     l
                 }
                 Err(e) => {
                     h.on_error(e.clone()).await;
-                    Self::handle_opt_send_result(EventResult::ErrorType(e.clone()), opt_sender);
+                    Self::handle_opt_send_result(Some(Ok(None)), Some(Ok(None)), opt_sender);
                     return;
                 }
             };
@@ -452,11 +463,11 @@ Node<
         enable_testing:bool
     ) -> Res<()> {
         trace!("accept new {}", addr.to_string());
-        let ep = Endpoint::new(
+        let ep = Arc::new(EndpointAsyncImpl::new(
             socket,
             addr,
             OptEP::default().enable_dtm_test(enable_testing)
-        );
+        ));
         let on_accepted = {
             let h = handle.clone();
             async move {
@@ -529,20 +540,87 @@ Node<
         ).await
     }
 
-    fn handle_opt_send_result(er: EventResult, opt_sender: Option<ResultSender>) {
+
+    fn handle_opt_send_result<S, A>(
+        opt_ep_sync: Option<S>,
+        opt_ep_async: Option<A>,
+        opt_sender: ResultSenderType<S, A>) {
         match opt_sender {
-            None => {}
-            Some(sender) => {
-                let r = sender.send(er);
-                match r {
-                    Ok(()) => {}
-                    Err(_e) => { error!("send result error"); }
+            ResultSenderType::SendNone => {}
+            ResultSenderType::Sync(s) => {
+                match opt_ep_sync {
+                    Some(ep_sync) => {
+                        let r = s.send(ep_sync);
+                        match r {
+                            Ok(()) => {}
+                            Err(_e) => { error!("send sync error"); }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            ResultSenderType::Async(s) => {
+                match opt_ep_async {
+                    Some(ep_async) => {
+                        let r = s.send(ep_async);
+                        match r {
+                            Ok(()) => {}
+                            Err(_e) => { error!("send async error"); }
+                        }
+                    },
+                    _ => {}
                 }
             }
         }
     }
 
-    fn node_event_sender(&self) -> NodeSender<M> {
+    fn handle_result_endpoint(
+        node: &NodeContext<M>,
+        return_endpoint: bool,
+        res_endpoint: Res<Arc<dyn EndpointAsync<M>>>,
+        opt_result_sender: &ResultSenderType<
+            Res<Option<Arc<dyn EndpointSync<M>>>>,
+            Res<Option<Arc<dyn EndpointAsync<M>>>>
+        >) -> (Option<Res<Option<Arc<dyn EndpointSync<M>>>>>,
+               Option<Res<Option<Arc<dyn EndpointAsync<M>>>>>) {
+        match opt_result_sender {
+            ResultSenderType::SendNone => {
+                (None, None)
+            }
+            ResultSenderType::Async(_) => {
+                (None,
+                 Some(
+                     res_endpoint.map(
+                         |e| {
+                             if return_endpoint {
+                                 Some(e)
+                             } else {
+                                 None
+                             }
+                         })
+                 )
+                )
+            }
+            ResultSenderType::Sync(_) => {
+                (Some(
+                    res_endpoint.map(
+                        |e| -> Option<Arc<dyn EndpointSync<_>>>
+                            {
+                                if return_endpoint {
+                                    let ep = Arc::new(EndpointSyncImpl::new(e));
+                                    EndpointSyncImpl::handle_loop(ep.clone(), node.stop_notify());
+                                    Some(ep)
+                                } else {
+                                    None
+                                }
+                            })
+                ),
+                 None)
+            }
+        }
+    }
+
+    fn node_event_sink(&self) -> NodeSender<M> {
         let ch = self.node_context.default_event_channel();
         NodeSender::new(ch.name().clone(), ch.sender().clone())
     }

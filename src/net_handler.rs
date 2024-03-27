@@ -14,11 +14,14 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, Mutex};
 use tracing::{error, Instrument, trace, trace_span};
 
-use crate::endpoint::Endpoint;
-use crate::event_sink_impl::EventSenderImpl;
+use crate::endpoint_async::EndpointAsync;
+use crate::endpoint_sync::EndpointSync;
+use crate::endpoint_sync_impl::EndpointSyncImpl;
+use crate::event_sink_async_impl::EventSenderImpl;
 use crate::handle_event::HandleEvent;
-use crate::message_channel::MessageChSender;
-use crate::message_receiver_channel::MessageReceiverChannel;
+use crate::message_channel::{MessageChAsyncSender, MessageChSyncSender};
+use crate::message_receiver_channel_async::MessageReceiverChannelAsync;
+use crate::message_receiver_channel_sync::MessageReceiverChannelSync;
 use crate::notifier::Notifier;
 use crate::task::spawn_local_task;
 
@@ -27,8 +30,11 @@ pub type NodeSender<MsgTrait> = EventSenderImpl<MsgTrait>;
 
 pub struct InnerNetHandler<M: MsgTrait> {
     _node_id: NID,
-    message_ch_sender: Mutex<Vec<Arc<MessageChSender<(Message<M>, Endpoint)>>>>,
-    message_receiver: Vec<Arc<MessageReceiverChannel<M>>>,
+    sync_service: bool,
+    message_async_ch_sender: Mutex<Vec<Arc<MessageChAsyncSender<(Message<M>, Arc<dyn EndpointAsync<M>>)>>>>,
+    message_async_ch_receiver: Vec<Arc<MessageReceiverChannelAsync<M>>>,
+    message_sync_ch_sender: Mutex<Vec<Arc<MessageChSyncSender<(Message<M>, Arc<dyn EndpointSync<M>>)>>>>,
+    message_sync_ch_receiver: Vec<Arc<MessageReceiverChannelSync<M>>>,
     stop_notify: Notifier,
 }
 
@@ -39,8 +45,8 @@ pub struct NetHandler<M: MsgTrait> {
 }
 
 #[async_trait]
-impl<M: MsgTrait> HandleEvent for NetHandler<M> {
-    async fn on_accepted(&self, endpoint: Endpoint) -> Res<()> {
+impl<M: MsgTrait> HandleEvent<M> for NetHandler<M> {
+    async fn on_accepted(&self, endpoint: Arc<dyn EndpointAsync<M>>) -> Res<()> {
         trace!("{} accept connection {}", self.name, endpoint.remote_address().to_string());
         let inner = self.inner.clone();
         spawn_local_task(inner.stop_notify.clone(), "handle_message, ", async move {
@@ -52,7 +58,7 @@ impl<M: MsgTrait> HandleEvent for NetHandler<M> {
     async fn on_connected(
         &self,
         address: SocketAddr,
-        result_endpoint: Res<Endpoint>,
+        result_endpoint: Res<Arc<dyn EndpointAsync<M>>>,
     ) -> Res<()> {
         match result_endpoint {
             Ok(endpoint) => {
@@ -79,6 +85,7 @@ impl<M: MsgTrait> HandleEvent for NetHandler<M> {
 impl<M: MsgTrait> NetHandler<M> {
     pub fn new(node_id: NID,
                name: String,
+               sync_service: bool,
                num_message_receiver: u32,
                stop_notify: Notifier,
     ) -> Self {
@@ -86,73 +93,112 @@ impl<M: MsgTrait> NetHandler<M> {
             name,
             inner: Arc::new(InnerNetHandler::new(
                 node_id,
+                sync_service,
                 num_message_receiver,
                 stop_notify)),
         }
     }
 
-    pub fn message_receiver(&self) -> Vec<Arc<MessageReceiverChannel<M>>> {
-        self.inner.message_receiver()
+    pub fn message_receiver_async(&self) -> Vec<Arc<MessageReceiverChannelAsync<M>>> {
+        self.inner.message_receiver_async()
+    }
+
+    pub fn message_receiver_sync(&self) -> Vec<Arc<MessageReceiverChannelSync<M>>> {
+        self.inner.message_receiver_sync()
     }
 }
 
 impl<M: MsgTrait> InnerNetHandler<M> {
     pub fn new(
         node_id: NID,
+        sync_service: bool,
         num_message_receiver: u32,
         stop_notify: Notifier,
     ) -> Self {
         if num_message_receiver == 0 {
             panic!("cannot 0 message receiver");
         }
-        let mut message_ch_sender = vec![];
-        let mut message_receiver: Vec<Arc<MessageReceiverChannel<M>>> = vec![];
-        for _ in 0..num_message_receiver {
-            let (s, r) = mpsc::unbounded_channel::<(Message<M>, Endpoint)>();
-            let receiver = MessageReceiverChannel::new(Arc::new(Mutex::new(r)));
-            let r =  Arc::new(receiver);
-            message_receiver.push(r.clone());
-            message_ch_sender.push(Arc::new(s));
+        let mut message_async_ch_sender = vec![];
+        let mut message_async_ch_receiver: Vec<Arc<MessageReceiverChannelAsync<M>>> = vec![];
+
+        let mut message_sync_ch_sender = vec![];
+        let mut message_sync_ch_receiver: Vec<Arc<MessageReceiverChannelSync<M>>> = vec![];
+        if !sync_service {
+            for _ in 0..num_message_receiver {
+                let (s, r) = mpsc::unbounded_channel::<(Message<M>, Arc<dyn EndpointAsync<M>>)>();
+                let receiver = MessageReceiverChannelAsync::new(Arc::new(Mutex::new(r)));
+                let r = Arc::new(receiver);
+                message_async_ch_receiver.push(r.clone());
+                message_async_ch_sender.push(Arc::new(s));
+            }
+        } else {
+            for _ in 0..num_message_receiver {
+                let (s, r) = std::sync::mpsc::channel::<(Message<M>, Arc<dyn EndpointSync<M>>)>();
+                let receiver = MessageReceiverChannelSync::new(Arc::new(std::sync::Mutex::new(r)));
+                let r = Arc::new(receiver);
+                message_sync_ch_receiver.push(r.clone());
+                message_sync_ch_sender.push(Arc::new(s));
+            }
         }
 
         let s = InnerNetHandler {
             _node_id: node_id,
-            message_ch_sender: Mutex::new(message_ch_sender),
-            message_receiver,
+            sync_service,
+            message_async_ch_sender: Mutex::new(message_async_ch_sender),
+            message_async_ch_receiver,
+            message_sync_ch_sender: Mutex::new(message_sync_ch_sender),
+            message_sync_ch_receiver,
             stop_notify,
         };
         s
     }
 
-    fn message_receiver(&self) -> Vec<Arc<MessageReceiverChannel<M>>> {
-        self.message_receiver.clone()
+    fn message_receiver_async(&self) -> Vec<Arc<MessageReceiverChannelAsync<M>>> {
+        self.message_async_ch_receiver.clone()
     }
 
+    fn message_receiver_sync(&self) -> Vec<Arc<MessageReceiverChannelSync<M>>> {
+        self.message_sync_ch_receiver.clone()
+    }
 
-    async fn receiver_message(&self, message: Message<M>, ep:Endpoint) -> Res<()> {
+    async fn receiver_message(&self, message: Message<M>, ep: Arc<dyn EndpointAsync<M>>) -> Res<()> {
         let mut hasher = DefaultHasher::new();
         message.hash(&mut hasher);
         let hash = hasher.finish();
-        let guard = self.message_ch_sender.lock().await;
-        let index = (hash as usize) % guard.len();
-        let n: Arc<MessageChSender<(Message<M>, Endpoint)>> = guard[index].clone();
-        let result = n.send((message, ep));
-        match result {
-            Ok(_) => { Ok(()) }
-            Err(e) => { Err(ET::TokioSenderError(e.to_string())) }
+        if self.sync_service {
+            let guard = self.message_sync_ch_sender.lock().await;
+            let index = (hash as usize) % guard.len();
+            let n: Arc<MessageChSyncSender<(Message<M>, Arc<dyn EndpointSync<M>>)>> = guard[index].clone();
+            let ep_sync = Arc::new(EndpointSyncImpl::new(ep));
+            EndpointSyncImpl::handle_loop(ep_sync.clone(), self.stop_notify.clone());
+            let result = n.send((message, ep_sync));
+            match result {
+                Ok(_) => { Ok(()) }
+                Err(e) => { Err(ET::TokioSenderError(e.to_string())) }
+            }
+        } else {
+            let guard = self.message_async_ch_sender.lock().await;
+            let index = (hash as usize) % guard.len();
+            let n: Arc<MessageChAsyncSender<(Message<M>, Arc<dyn EndpointAsync<M>>)>> = guard[index].clone();
+            let result = n.send((message, ep));
+            match result {
+                Ok(_) => { Ok(()) }
+                Err(e) => { Err(ET::TokioSenderError(e.to_string())) }
+            }
         }
+
     }
 
 
     async fn stop(&self) {
-        let mut guard = self.message_ch_sender.lock().await;
+        let mut guard = self.message_async_ch_sender.lock().await;
         guard.clear();
     }
 
 
     async fn process_message(
         &self,
-        ep: Endpoint,
+        ep: Arc<dyn EndpointAsync<M>>,
     ) -> Res<()> {
         let r = self.loop_handle_message(&ep)
             .instrument(trace_span!("loop handle message")).await;
@@ -176,7 +222,7 @@ impl<M: MsgTrait> InnerNetHandler<M> {
 
     async fn loop_handle_message(
         &self,
-        ep: &Endpoint,
+        ep: &Arc<dyn EndpointAsync<M>>,
     ) -> Res<()> {
         let mut r = Ok(());
         while r.is_ok() {
@@ -199,9 +245,9 @@ impl<M: MsgTrait> InnerNetHandler<M> {
 
     async fn handle_next_message(
         &self,
-        ep: &Endpoint,
+        ep: &Arc<dyn EndpointAsync<M>>,
     ) -> Res<()> {
-        let m = ep.recv::<M>().await?;
+        let m = ep.recv().await?;
         self.receiver_message(m, ep.clone()).await?;
         Ok(())
     }
@@ -233,6 +279,7 @@ fn test_net_handler() {
     let _ = NetHandler::<TestMsg>::new(
         1 as NID,
         "handler".to_string(),
+        false,
         0,
         Notifier::default());
 }
