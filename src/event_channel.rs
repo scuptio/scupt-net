@@ -35,6 +35,12 @@ impl<M: MsgTrait + 'static> EventReceiver<M> {
         }
     }
 
+    // used for debugging
+    #[allow(dead_code)]
+    pub fn name(&self) -> String {
+        self._name.clone()
+    }
+
     #[async_backtrace::framed]
     pub async fn recv(&mut self) -> Res<NetEvent<M>> {
         let _t = task_trace!();

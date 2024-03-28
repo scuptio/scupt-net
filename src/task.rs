@@ -84,7 +84,7 @@ impl Trace {
         let mut ret = String::new();
         let guard = scc::ebr::Guard::new();
         for (_id, task) in TASK_CONTEXT.iter(&guard) {
-            let s = format!("name:{},\t id: {},\t trace {}", task.name(), _id, task.backtrace());
+            let s = format!("name:{},\t id: {},\t trace {}\n", task.name(), _id, task.backtrace());
             ret.push_str(s.as_str());
         }
         ret
@@ -102,7 +102,7 @@ macro_rules! task_trace {
     () => {
         {
             let s = async_backtrace::location!();
-            crate::task::Trace::new(s)
+            $crate::task::Trace::new(s)
         }
     };
 }
@@ -125,6 +125,9 @@ macro_rules! task_backtrace {
     };
 }
 
+/// The task must create by `task::spawn_local_task`, or `task::spawn_task` to set `TASK_ID` value.
+/// if not, the `LocalKey::get` would raise such panic,
+///     "cannot access a task-local storage value without setting it first"
 fn this_task_id() -> TaskID {
     TASK_ID.get()
 }

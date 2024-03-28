@@ -184,6 +184,7 @@ impl<M: MsgTrait> EventSenderImpl<M> {
         no_wait: bool,
         read_resp: bool,
     ) -> Res<Option<Arc<dyn ReceiverResp<M>>>> {
+        let _ = task_trace!();
         trace!("channel name {} send message {:?}", self.name, msg);
         if no_wait && !read_resp {
             let event = NetEvent::NetSend(msg, ResultSenderType::SendNone);
@@ -320,8 +321,10 @@ impl<
     M: MsgTrait + 'static,
 > SenderAsync<M> for EventSenderImpl<
     M> {
+    #[async_backtrace::framed]
     async fn send(&self, message: Message<M>, opt: OptSend) -> Res<()> {
-        let _ = self.send_sync(message, opt.is_enable_no_wait());
+        let _ = task_trace!();
+        let _ = self.send_async(message, opt.is_enable_no_wait(), false).await;
         Ok(())
     }
 }
