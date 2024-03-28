@@ -5,6 +5,7 @@ use tokio::sync::mpsc;
 use tracing::trace;
 
 use crate::event::NetEvent;
+use crate::task_trace;
 
 type SyncMutex<T> = std::sync::Mutex<T>;
 
@@ -34,7 +35,9 @@ impl<M: MsgTrait + 'static> EventReceiver<M> {
         }
     }
 
+    #[async_backtrace::framed]
     pub async fn recv(&mut self) -> Res<NetEvent<M>> {
+        let _t = task_trace!();
         let opt = self.inner.recv().await;
         trace!("{} receive event", self._name);
         match opt {

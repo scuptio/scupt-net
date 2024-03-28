@@ -9,6 +9,7 @@ use tokio::net::TcpStream;
 use crate::endpoint_async::EndpointAsync;
 use crate::endpoint_inner::_Endpoint;
 use crate::opt_ep::OptEP;
+use crate::task_trace;
 
 #[derive(Clone)]
 pub struct EndpointAsyncImpl {
@@ -22,15 +23,22 @@ impl<M: MsgTrait + 'static> EndpointAsync<M> for EndpointAsyncImpl {
         self._remote_address()
     }
 
+    #[async_backtrace::framed]
     async fn send(&self, m: Message<M>) -> Res<()> {
+        let _t = task_trace!();
         self._send(m).await
     }
 
+    #[async_backtrace::framed]
     async fn recv(&self) -> Res<Message<M>> {
+        let _t = task_trace!();
+
         self._recv().await
     }
 
+    #[async_backtrace::framed]
     async fn close(&self) -> Res<()> {
+        let _t = task_trace!();
         self._close().await
     }
 }
@@ -42,11 +50,15 @@ impl EndpointAsyncImpl {
         }
     }
 
+    #[async_backtrace::framed]
     async fn _send<M: MsgTrait + 'static>(&self, m: Message<M>) -> Res<()> {
+        let _t = task_trace!();
         self._ep.send(m).await
     }
 
+    #[async_backtrace::framed]
     async fn _recv<M: MsgTrait + 'static>(&self) -> Res<Message<M>> {
+        let _t = task_trace!();
         self._ep.recv::<M>().await
     }
 
@@ -54,7 +66,9 @@ impl EndpointAsyncImpl {
         self._ep.remote_address()
     }
 
+    #[async_backtrace::framed]
     async fn _close(&self) -> Res<()> {
+        let _t = task_trace!();
         self._ep.close().await
     }
 }

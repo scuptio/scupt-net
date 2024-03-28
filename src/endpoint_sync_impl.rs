@@ -15,6 +15,7 @@ use crate::endpoint_async::EndpointAsync;
 use crate::endpoint_sync::EndpointSync;
 use crate::notifier::Notifier;
 use crate::task::spawn_local_task;
+use crate::task_trace;
 
 pub struct EndpointSyncImpl<M: MsgTrait + 'static> {
     endpoint: Arc<dyn EndpointAsync<M>>,
@@ -69,7 +70,9 @@ impl<M: MsgTrait + 'static> EndpointSyncImpl<M> {
         }
     }
 
+    #[async_backtrace::framed]
     async fn handle_send(&self) -> Res<()> {
+        let _t = task_trace!();
         let mut opt = self.s_receiver.lock().await;
         let mut opt_receiver = None;
         std::mem::swap(&mut opt_receiver, &mut opt);
@@ -86,7 +89,9 @@ impl<M: MsgTrait + 'static> EndpointSyncImpl<M> {
         Ok(())
     }
 
+    #[async_backtrace::framed]
     async fn handle_receive(&self) -> Res<()> {
+        let _t = task_trace!();
         let mut opt = self.r_invoke_receiver.lock().await;
         let mut opt_receiver = None;
         std::mem::swap(&mut opt_receiver, &mut opt);

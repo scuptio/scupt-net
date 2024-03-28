@@ -18,8 +18,8 @@ use tokio::sync::Mutex;
 use tokio_util::codec::Framed;
 use tracing::{Instrument, trace_span};
 
+use crate::{parse_dtm_message, task_trace};
 use crate::framed_codec::FramedCodec;
-use crate::parse_dtm_message;
 
 pub struct _Endpoint {
     sender: Mutex<SplitSink<Framed<TcpStream, FramedCodec>, BytesMut>>,
@@ -52,7 +52,9 @@ impl _Endpoint {
     }
 
     // send message
+    #[async_backtrace::framed]
     pub async fn send<M: MsgTrait + 'static>(&self, m: Message<M>) -> Res<()> {
+        let _t = task_trace!();
         if self.enable_dtm_test {
             return Ok(());
         }
@@ -67,7 +69,10 @@ impl _Endpoint {
     }
 
     // receive a message
+    #[async_backtrace::framed]
     pub async fn recv<M: MsgTrait + 'static>(&self) -> Res<Message<M>> {
+        let _t = task_trace!();
+
         let mut stream = self.receiver.lock().instrument(trace_span!("lock")).await;
         let opt = stream.next().await;
         let r = match opt {
@@ -91,7 +96,9 @@ impl _Endpoint {
         }
     }
 
+    #[async_backtrace::framed]
     pub async fn close(&self) -> Res<()> {
+        let _t = task_trace!();
         let r1 = {
             let mut sink = self.sender.lock().await;
             sink.close().await

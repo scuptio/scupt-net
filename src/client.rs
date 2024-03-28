@@ -17,6 +17,7 @@ use crate::es_option::ESConnectOption;
 use crate::handle_event::HandleEvent;
 use crate::node::Node;
 use crate::notifier::Notifier;
+use crate::task_trace;
 
 #[derive(Clone)]
 pub struct Client<M: MsgTrait + 'static> {
@@ -44,19 +45,27 @@ impl<M: MsgTrait + 'static> Client<M> {
         self.inner.run(local);
     }
 
+    #[async_backtrace::framed]
     pub async fn is_connected(&self) -> bool {
+        let _t = task_trace!();
         self.inner.is_connected().await
     }
 
+    #[async_backtrace::framed]
     pub async fn connect(&self, opt: OptClientConnect) -> Res<()> {
+        let _t = task_trace!();
         self.inner.connect(opt).await
     }
 
+    #[async_backtrace::framed]
     pub async fn send(&self, message: Message<M>) -> Res<()> {
+        let _t = task_trace!();
         self.inner.send(message).await
     }
 
+    #[async_backtrace::framed]
     pub async fn recv(&self) -> Res<Message<M>> {
+        let _t = task_trace!();
         self.inner.recv().await
     }
 
@@ -114,12 +123,16 @@ impl<M: MsgTrait + 'static> ClientInner<M> {
         self.node.run_local(local);
     }
 
+    #[async_backtrace::framed]
     pub async fn is_connected(&self) -> bool {
+        let _t = task_trace!();
         let g = self.opt_endpoint.lock().await;
         g.is_some()
     }
 
+    #[async_backtrace::framed]
     pub async fn connect(&self, opt: OptClientConnect) -> Res<()> {
+        let _t = task_trace!();
         let mut opt_ep = None;
         let mut n = opt.retry_max;
         while opt.retry_max == 0 || n > 0 {
@@ -147,7 +160,9 @@ impl<M: MsgTrait + 'static> ClientInner<M> {
         Ok(())
     }
 
+    #[async_backtrace::framed]
     pub async fn send(&self, message: Message<M>) -> Res<()> {
+        let _t = task_trace!();
         let guard = self.opt_endpoint.lock().await;
         if let Some(e) = &(*guard) {
             e.send(message).await?;
@@ -157,7 +172,9 @@ impl<M: MsgTrait + 'static> ClientInner<M> {
         }
     }
 
+    #[async_backtrace::framed]
     pub async fn recv(&self) -> Res<Message<M>> {
+        let _t = task_trace!();
         let guard = self.opt_endpoint.lock().await;
         if let Some(e) = &(*guard) {
             let m = e.recv().await?;

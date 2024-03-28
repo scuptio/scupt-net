@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
+
 use std::time::Duration;
 
 use bincode::{Decode, Encode};
@@ -29,6 +30,7 @@ use scupt_net::message_sender_async::SenderAsync;
 use scupt_net::message_sender_sync::SenderSync;
 use scupt_net::notifier::Notifier;
 use scupt_net::opt_send::OptSend;
+use scupt_net::task::spawn_local_task;
 
 #[derive(
 Clone,
@@ -85,6 +87,7 @@ fn test_service_async(
             num_message_receiver,
             testing: false,
             sync_service: false,
+            port_debug: Some(3001),
         };
         let s = IOService::<TestMsg>::new_async_service(k.clone(), name, opt, Notifier::new())?;
         services.push(Arc::new(s));
@@ -104,9 +107,12 @@ fn test_service_async(
             let thd_start_serve = std::thread::spawn(move || {
                 let runtime = Builder::new_current_thread().enable_all().build().unwrap();
                 let ls = LocalSet::new();
-                ls.spawn_local(async move {
+                let f = async move {
                     let r = serve_async(sink, addr).await;
                     assert!(r.is_ok());
+                };
+                ls.spawn_local(async move {
+                    spawn_local_task(Notifier::new(), "", f)
                 });
                 runtime.block_on(ls);
                 trace!("{} serve thread exit", node_id)
@@ -138,9 +144,12 @@ fn test_service_async(
                 let thd_recv = std::thread::spawn(move || {
                     let runtime = Builder::new_current_thread().enable_all().build().unwrap();
                     let ls = LocalSet::new();
-                    ls.spawn_local(async move {
+                    let f = async move {
                         let r = receive_async(node_id, r, stop_sender).await;
                         assert!(r.is_ok());
+                    };
+                    ls.spawn_local(async {
+                        let _ = spawn_local_task(Notifier::new(), "", f);
                     });
                     runtime.block_on(ls);
                     trace!("{} {} receive thread exit", node_id, i);
@@ -164,7 +173,7 @@ fn test_service_async(
                 let thd = std::thread::spawn(move || {
                     let runtime = Builder::new_current_thread().enable_all().build().unwrap();
                     let ls = LocalSet::new();
-                    ls.spawn_local(async move {
+                    let f = async move {
                         let r = connect_async(node_id.clone(), sink.clone(), addrs.clone()).await;
                         trace!("before wait, connect done {}, {:?}", node_id, r);
                         let _ = b.wait().await;
@@ -172,6 +181,11 @@ fn test_service_async(
                         assert!(r.is_ok());
                         let r = send_async(node_id.clone(), 10, sender.clone(), addrs.clone()).await;
                         assert!(r.is_ok());
+                    };
+                    ls.spawn_local(async move {
+                        spawn_local_task(
+                            Notifier::new(), "", f,
+                        )
                     });
                     runtime.block_on(ls);
                     trace!("{} {} sender thread exit", node_id, i);
@@ -186,7 +200,7 @@ fn test_service_async(
         let stop_thd = std::thread::spawn(|| {
             let runtime = Builder::new_current_thread().enable_all().build().unwrap();
             let ls = LocalSet::new();
-            ls.spawn_local(async move {
+            let f = async move {
                 let mut node_id_set = ids;
                 let mut receiver = stop_receiver;
                 while !node_id_set.is_empty() {
@@ -206,6 +220,10 @@ fn test_service_async(
                     assert!(r.is_ok());
                 }
                 trace!("stop thread exit");
+            };
+
+            ls.spawn_local(async move {
+                spawn_local_task(Notifier::new(), "wait stop", f)
             });
             runtime.block_on(ls);
         });
@@ -243,6 +261,7 @@ fn test_service_sync(
             num_message_receiver,
             testing: false,
             sync_service: true,
+            port_debug: None,
         };
         let s = IOService::<TestMsg>::new_sync_service(k.clone(), name, opt, Notifier::new())?;
         services.push(Arc::new(s));
@@ -356,6 +375,7 @@ fn test_service_sync(
     }
     Ok(())
 }
+
 
 async fn serve_async<M: MsgTrait + 'static>(
     sink: Arc<dyn EventSinkAsync<M>>,

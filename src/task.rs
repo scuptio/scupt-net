@@ -1,9 +1,11 @@
+use std::collections::VecDeque;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+use async_backtrace::Location as BtLoc;
 use lazy_static::lazy_static;
 use scc::HashIndex;
-
 use scupt_util::res::Res;
 use tokio::{select, task, task_local};
 use tokio::task::JoinHandle;
@@ -22,54 +24,33 @@ pub type TaskID = u128;
 task_local! {
     static TASK_ID: TaskID;
 }
+
 pub struct TaskContext {
     name: String,
     notifier:Notifier,
     local_task:bool,
     id:u128,
-    location:Mutex<String>,
+    backtrace: Mutex<VecDeque<BtLoc>>,
 }
 
 pub struct Trace {
 
 }
 
-
 impl Trace {
-    pub fn new() -> Self {
-        Self::enter();
+    pub fn new(location: BtLoc) -> Self {
+        Self::enter(location);
         Self {
 
         }
     }
-}
-impl Drop for Trace {
-    fn drop(&mut self) {
-        Trace::exit()
-    }
-}
 
-#[macro_export]
-macro_rules! task_trace {
-    (
-        $id:expr
-    ) => {
-        {
-            Trace::new($id)
-        }
-    };
-}
-
-pub fn this_task_id() -> TaskID {
-    TASK_ID.get()
-}
-impl Trace {
-    fn enter() {
+    fn enter(location: BtLoc) {
         let _id = this_task_id();
         let opt = TaskContext::get(_id);
         match opt {
             Some(_t) => {
-
+                _t.enter(location);
             }
             _ => {}
         }
@@ -80,13 +61,76 @@ impl Trace {
         let opt = TaskContext::get(_id);
         match opt {
             Some(_t) => {
-
+                _t.exit();
             }
             _ => {}
         }
     }
+
+    pub fn backtrace() -> String {
+        let _id = this_task_id();
+        let opt = TaskContext::get(_id);
+        match opt {
+            Some(_t) => {
+                _t.backtrace()
+            }
+            _ => {
+                "".to_string()
+            }
+        }
+    }
+
+    pub fn dump_task_trace() -> String {
+        let mut ret = String::new();
+        let guard = scc::ebr::Guard::new();
+        for (_id, task) in TASK_CONTEXT.iter(&guard) {
+            let s = format!("name:{},\t id: {},\t trace {}", task.name(), _id, task.backtrace());
+            ret.push_str(s.as_str());
+        }
+        ret
+    }
 }
-pub fn new_task_id() -> TaskID {
+
+impl Drop for Trace {
+    fn drop(&mut self) {
+        Trace::exit()
+    }
+}
+
+#[macro_export]
+macro_rules! task_trace {
+    () => {
+        {
+            let s = async_backtrace::location!();
+            crate::task::Trace::new(s)
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! dump_task_trace {
+    () => {
+        {
+            crate::task::Trace::dump_task_trace()
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! task_backtrace {
+    () => {
+        {
+            crate::task::Trace::backtrace()
+        }
+    };
+}
+
+fn this_task_id() -> TaskID {
+    TASK_ID.get()
+}
+
+
+fn new_task_id() -> TaskID {
     Uuid::new_v4().as_u128()
 }
 
@@ -97,7 +141,7 @@ impl TaskContext {
             notifier,
             local_task,
             id,
-            location: Default::default(),
+            backtrace: Default::default(),
         };
         let ret = Arc::new(r);
         let id = ret.id();
@@ -132,16 +176,30 @@ impl TaskContext {
         self.notifier.clone()
     }
 
-    pub fn enter(&self) {
-        let s = async_backtrace::location!().to_string();
-        let mut location = self.location.lock().unwrap();
-        *location = s;
+    pub fn enter(&self, l: BtLoc) {
+        let mut location = self.backtrace.lock().unwrap();
+        location.push_back(l);
     }
 
     pub fn exit(&self) {
-        let s = async_backtrace::location!().to_string();
-        let mut location = self.location.lock().unwrap();
-        *location = s;
+        let mut location = self.backtrace.lock().unwrap();
+        let _ = location.pop_back();
+    }
+
+    pub fn backtrace(&self) -> String {
+        let deque = self.backtrace.lock().unwrap();
+        let mut s = String::new();
+        s.push_str("backtrace:\n");
+        for (n, l) in deque.iter().enumerate() {
+            s.push_str("  ");
+            for _ in 0..n {
+                s.push_str("--");
+            }
+            s.push_str("->");
+            s.push_str(l.to_string().as_str());
+            s.push_str("\n");
+        }
+        s
     }
 }
 
@@ -155,6 +213,7 @@ pub fn spawn_local_task<F>(cancel_notifier: Notifier, _name: &str, future: F) ->
         F::Output: 'static,
 {
     let id = new_task_id();
+    let _ = TaskContext::new_context(id, _name.to_string(), false, cancel_notifier.clone());
     Ok(task::spawn_local(TASK_ID.scope(id, async move {
         let r = __select_local_till_done(cancel_notifier, future).await;
         let _ = TaskContext::remove_context(id);

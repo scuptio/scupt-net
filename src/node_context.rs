@@ -15,6 +15,7 @@ use crate::event::{NetEvent, ResultSenderType};
 use crate::event_channel::EventChannel;
 use crate::net_handler::NodeSender;
 use crate::notifier::Notifier;
+use crate::task_trace;
 
 pub type EventChannelMap<MsgTrait> = HashMap<String, Arc<EventChannel<MsgTrait>>>;
 
@@ -68,22 +69,29 @@ impl<M: MsgTrait + 'static> NodeContext<M> {
         self.stop_notify.clone()
     }
 
+    #[async_backtrace::framed]
     pub async fn stop_and_notify(&self) {
+        let _t = task_trace!();
         let ok = self.stop_notify.task_notify_all();
         if ok {
             self.stop().instrument(trace_span!("stop {}", self.node_id)).await;
         }
     }
 
+    #[async_backtrace::framed]
     pub async fn get_endpoint(&self, node_id: NID) -> Res<Arc<dyn EndpointAsync<M>>> {
+        let _t = task_trace!();
         let c = self.mutex_ctx.lock().await;
         c.get_endpoint(node_id)
     }
 
+    #[async_backtrace::framed]
     pub async fn add_endpoint(&self, node_id: NID, endpoint: Arc<dyn EndpointAsync<M>>) -> Res<()> {
+        let _t = task_trace!();
         let mut c = self.mutex_ctx.lock().await;
         c.add_endpoint(node_id, endpoint)
     }
+
 
     pub fn new_event_channel(&self, name: String) -> Res<Arc<NodeSender<M>>> {
         let (n, s) = self.new_event_sender(name)?;
@@ -120,7 +128,9 @@ impl<M: MsgTrait + 'static> NodeContext<M> {
         self.enable_testing
     }
 
+    #[async_backtrace::framed]
     pub async fn stop(&self) {
+        let _t = task_trace!();
         let mut map = self.channel_set.lock().unwrap();
         for (_, v) in map.iter() {
             self.close_one_channel(v.clone()).instrument(trace_span!("close channel ")).await;

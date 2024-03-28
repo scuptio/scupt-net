@@ -27,6 +27,7 @@ use crate::node_context::NodeContext;
 use crate::notifier::Notifier;
 use crate::opt_ep::OptEP;
 use crate::task::spawn_local_task;
+use crate::task_trace;
 
 #[derive(Clone)]
 pub struct Node<
@@ -162,6 +163,7 @@ Node<
         handle: Arc<H>,
         enable_testing: bool,
     ) {
+        let _t = task_trace!();
         trace!("node {}, run main loop, {}", name, node.name());
         let mut receiver = channel;
 
@@ -203,6 +205,7 @@ Node<
         handle: Arc<H>,
         enable_testing: bool,
     ) -> Res<()> {
+        let _t = task_trace!();
         match event {
             NetEvent::NetConnect {
                 node_id,
@@ -278,6 +281,7 @@ Node<
             Res<Option<Arc<dyn EndpointAsync<M>>>>
         >,
     ) -> Res<()> {
+        let _t = task_trace!();
         let _m = message.clone();
         let ep_result = node.get_endpoint(node_id).await;
         let ep_result = match ep_result {
@@ -302,6 +306,7 @@ Node<
         handle: Arc<H>,
         enable_testing: bool,
     ) -> Res<()> {
+        let _t = task_trace!();
         let notify = node.stop_notify();
         let task_name = format!("main loop  {}", name);
         let main_loop = async move {
@@ -330,6 +335,7 @@ Node<
         >,
         enable_testing: bool,
     ) {
+        let _t = task_trace!();
         let node_name = node.name().clone();
         let notify = node.stop_notify();
         // future process message
@@ -350,6 +356,7 @@ Node<
         ).unwrap();
     }
 
+    #[async_backtrace::framed]
     async fn task_handle_connected(
         node: Arc<NodeContext<M>>,
         return_endpoint: bool,
@@ -362,6 +369,7 @@ Node<
         >,
         enable_testing: bool,
     ) {
+        let _t = task_trace!();
         trace!("{} task handle connect to {} {}", node.name(), node_id, address.to_string());
         let r_connect = TcpStream::connect(address).await;
         trace!("{} task handle connect done, to {} {} ", node.name(), node_id, address.to_string());
@@ -416,6 +424,7 @@ Node<
         >,
         enable_testing: bool,
     ) -> Res<()> {
+        let _t = task_trace!();
         let node_id = node.node_id();
         let h = handle.clone();
         let notify = node.stop_notify();
@@ -454,6 +463,7 @@ Node<
         Ok(())
     }
 
+    #[async_backtrace::framed]
     async fn after_accept_connection(
         node: Arc<NodeContext<M>>,
         listener: TcpListener,
@@ -462,6 +472,7 @@ Node<
         addr: SocketAddr,
         enable_testing: bool,
     ) -> Res<()> {
+        let _t = task_trace!();
         trace!("accept new {}", addr.to_string());
         let ep = Arc::new(EndpointAsyncImpl::new(
             socket,
@@ -522,12 +533,14 @@ Node<
         Ok(())
     }
 
+    #[async_backtrace::framed]
     async fn accept_new_connection(
         node: Arc<NodeContext<M>>,
         listener: TcpListener,
         handle: Arc<H>,
         enable_testing: bool,
     ) -> Res<()> {
+        let _t = task_trace!();
         let r = listener.accept().await;
         let (socket, addr) = res_io(r)?;
         Self::after_accept_connection(
@@ -540,11 +553,12 @@ Node<
         ).await
     }
 
-
+    #[async_backtrace::framed]
     fn handle_opt_send_result<S, A>(
         opt_ep_sync: Option<S>,
         opt_ep_async: Option<A>,
         opt_sender: ResultSenderType<S, A>) {
+        let _t = task_trace!();
         match opt_sender {
             ResultSenderType::SendNone => {}
             ResultSenderType::Sync(s) => {
@@ -574,6 +588,7 @@ Node<
         }
     }
 
+    #[async_backtrace::framed]
     fn handle_result_endpoint(
         node: &NodeContext<M>,
         return_endpoint: bool,
@@ -583,6 +598,7 @@ Node<
             Res<Option<Arc<dyn EndpointAsync<M>>>>
         >) -> (Option<Res<Option<Arc<dyn EndpointSync<M>>>>>,
                Option<Res<Option<Arc<dyn EndpointAsync<M>>>>>) {
+        let _t = task_trace!();
         match opt_result_sender {
             ResultSenderType::SendNone => {
                 (None, None)

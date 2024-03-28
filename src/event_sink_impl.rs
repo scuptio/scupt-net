@@ -21,6 +21,7 @@ use crate::message_receiver_endpoint::MessageReceiverEndpoint;
 use crate::message_sender_async::{SenderAsync, SenderRRAsync};
 use crate::message_sender_sync::SenderSync;
 use crate::opt_send::OptSend;
+use crate::task_trace;
 
 pub struct EventSenderImpl<M: MsgTrait> {
     name: String,
@@ -40,10 +41,12 @@ impl<M: MsgTrait> EventSenderImpl<M> {
         &self.name
     }
 
+    #[async_backtrace::framed]
     async fn recv_result(
         &self,
         receiver: AsyncReceiver<Res<()>>,
     ) -> Res<()> {
+        let _ = task_trace!();
         let ret = receiver.await.map_err(|e| {
             ET::RecvError(e.to_string())
         })?;
@@ -60,10 +63,12 @@ impl<M: MsgTrait> EventSenderImpl<M> {
         ret
     }
 
+    #[async_backtrace::framed]
     async fn recv_result_async_ep(
         &self,
         receiver: AsyncReceiver<Res<Option<Arc<dyn EndpointAsync<M>>>>>,
     ) -> Res<Option<Arc<dyn EndpointAsync<M>>>> {
+        let _ = task_trace!();
         let ret = receiver.await.map_err(|e| {
             ET::RecvError(e.to_string())
         })?;
@@ -80,7 +85,9 @@ impl<M: MsgTrait> EventSenderImpl<M> {
         ret
     }
 
+    #[async_backtrace::framed]
     async fn serve_async(&self, addr: SocketAddr, no_wait: bool) -> Res<()> {
+        let _ = task_trace!();
         trace!("async serve {} {}", self.channel_name(), addr.to_string());
         if no_wait {
             let event = NetEvent::NetListen(addr, ResultSenderType::SendNone);
@@ -108,12 +115,14 @@ impl<M: MsgTrait> EventSenderImpl<M> {
         Ok(())
     }
 
+    #[async_backtrace::framed]
     async fn connect_async(
         &self,
         node_id: NID, address: SocketAddr,
         no_wait: bool,
         read_endpoint: bool,
     ) -> Res<Option<Arc<dyn EndpointAsync<M>>>> {
+        let _ = task_trace!();
         trace!("channel name {}, send connect to {}", self.name, node_id);
         if no_wait && !read_endpoint {
             let event = NetEvent::NetConnect {
@@ -214,6 +223,7 @@ impl<M: MsgTrait> EventSenderImpl<M> {
         }
     }
 
+    #[async_backtrace::framed]
     pub async fn stop_async(&self, no_wait: bool) -> Res<()> {
         if no_wait {
             let event = NetEvent::Stop(ResultSenderType::SendNone);
@@ -268,15 +278,20 @@ impl<
 > EventSinkAsync<M> for EventSenderImpl<
     M
 > {
+    #[async_backtrace::framed]
     async fn stop(&self, opt: ESStopOpt) -> Res<()> {
+        let _ = task_trace!();
         self.stop_async(opt.no_wait()).await
     }
 
+    #[async_backtrace::framed]
     async fn serve(&self, addr: SocketAddr, opt: ESServeOpt) -> Res<()> {
         self.serve_async(addr, opt.no_wait()).await
     }
 
+    #[async_backtrace::framed]
     async fn connect(&self, node_id: NID, address: SocketAddr, opt: ESConnectOpt) -> Res<Option<Arc<dyn EndpointAsync<M>>>> {
+        let _t = task_trace!();
         self.connect_async(node_id, address, opt.no_wait(), opt.return_endpoint()).await
     }
 }
@@ -326,7 +341,9 @@ impl<
 impl<
     M: MsgTrait + 'static,
 > SenderRRAsync<M> for EventSenderImpl<M> {
+    #[async_backtrace::framed]
     async fn send(&self, message: Message<M>, _opt: OptSend) -> Res<Arc<dyn ReceiverResp<M>>> {
+        let _t = task_trace!();
         let opt = self.send_async(message, _opt.is_enable_no_wait(), true).await?;
         match opt {
             Some(recv) => { Ok(recv) }

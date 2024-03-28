@@ -24,6 +24,7 @@ use crate::message_receiver_channel_async::MessageReceiverChannelAsync;
 use crate::message_receiver_channel_sync::MessageReceiverChannelSync;
 use crate::notifier::Notifier;
 use crate::task::spawn_local_task;
+use crate::task_trace;
 
 pub type NodeSender<MsgTrait> = EventSenderImpl<MsgTrait>;
 
@@ -49,7 +50,7 @@ impl<M: MsgTrait> HandleEvent<M> for NetHandler<M> {
     async fn on_accepted(&self, endpoint: Arc<dyn EndpointAsync<M>>) -> Res<()> {
         trace!("{} accept connection {}", self.name, endpoint.remote_address().to_string());
         let inner = self.inner.clone();
-        spawn_local_task(inner.stop_notify.clone(), "handle_message, ", async move {
+        spawn_local_task(inner.stop_notify.clone(), "connection_handle_message", async move {
             let _r = inner.process_message(endpoint).await;
         })?;
         Ok(())
@@ -161,7 +162,9 @@ impl<M: MsgTrait> InnerNetHandler<M> {
         self.message_sync_ch_receiver.clone()
     }
 
+    #[async_backtrace::framed]
     async fn receiver_message(&self, message: Message<M>, ep: Arc<dyn EndpointAsync<M>>) -> Res<()> {
+        let _t = task_trace!();
         let mut hasher = DefaultHasher::new();
         message.hash(&mut hasher);
         let hash = hasher.finish();
@@ -188,17 +191,19 @@ impl<M: MsgTrait> InnerNetHandler<M> {
         }
     }
 
-
+    #[async_backtrace::framed]
     async fn stop(&self) {
+        let _t = task_trace!();
         let mut guard = self.message_async_ch_sender.lock().await;
         guard.clear();
     }
 
-
+    #[async_backtrace::framed]
     async fn process_message(
         &self,
         ep: Arc<dyn EndpointAsync<M>>,
     ) -> Res<()> {
+        let _t = task_trace!();
         let r = self.loop_handle_message(&ep)
             .instrument(trace_span!("loop handle message")).await;
         match r {
@@ -219,10 +224,12 @@ impl<M: MsgTrait> InnerNetHandler<M> {
         Ok(())
     }
 
+    #[async_backtrace::framed]
     async fn loop_handle_message(
         &self,
         ep: &Arc<dyn EndpointAsync<M>>,
     ) -> Res<()> {
+        let _t = task_trace!();
         let mut r = Ok(());
         while r.is_ok() {
             r = self.handle_next_message(ep).await;
@@ -242,10 +249,12 @@ impl<M: MsgTrait> InnerNetHandler<M> {
         r
     }
 
+    #[async_backtrace::framed]
     async fn handle_next_message(
         &self,
         ep: &Arc<dyn EndpointAsync<M>>,
     ) -> Res<()> {
+        let _t = task_trace!();
         let m = ep.recv().await?;
         self.receiver_message(m, ep.clone()).await?;
         Ok(())

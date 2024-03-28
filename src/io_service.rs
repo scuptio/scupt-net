@@ -5,6 +5,7 @@ use scupt_util::node_id::NID;
 use scupt_util::res::Res;
 use tokio::runtime::Runtime;
 use tokio::task::LocalSet;
+use crate::debug::debug_server_serve;
 
 use crate::event_sink_async::EventSinkAsync;
 use crate::event_sink_sync::EventSinkSync;
@@ -19,6 +20,7 @@ use crate::message_sender_sync::SenderSync;
 use crate::net_handler::NetHandler;
 use crate::node::Node;
 use crate::notifier::Notifier;
+use crate::task::spawn_local_task;
 
 type ServiceNode<M> = Node<
     M,
@@ -27,6 +29,7 @@ type ServiceNode<M> = Node<
 
 pub struct IOService<M: MsgTrait> {
     node_id: NID,
+    port_debug:Option<u16>,
     node: ServiceNode<M>,
     receiver_async: Vec<Arc<MessageReceiverChannelAsync<M>>>,
     receiver_sync: Vec<Arc<MessageReceiverChannelSync<M>>>,
@@ -37,6 +40,7 @@ pub struct IOServiceOpt {
     pub num_message_receiver: u32,
     pub testing: bool,
     pub sync_service: bool,
+    pub port_debug: Option<u16>,
 }
 
 impl<M: MsgTrait> IOService<M> {
@@ -75,6 +79,7 @@ impl<M: MsgTrait> IOService<M> {
            opt: IOServiceOpt,
            stop_notify: Notifier,
     ) -> Res<Self> {
+
         let handler = NetHandler::<M>::new(node_id.clone(),
                                            name.clone(),
                                            opt.sync_service,
@@ -91,6 +96,7 @@ impl<M: MsgTrait> IOService<M> {
 
         let s = Self {
             node_id,
+            port_debug: opt.port_debug,
             node,
             receiver_async,
             receiver_sync,
@@ -103,6 +109,20 @@ impl<M: MsgTrait> IOService<M> {
             Some(ls) => { ls }
             None => { LocalSet::new() }
         };
+        match &self.port_debug {
+            None => {}
+            Some(p) => {
+                let port = p.clone();
+                let f = debug_server_serve(([0, 0, 0, 0], port.clone()).into());
+                let n = self.node.stop_notify();
+                ls.spawn_local(async move {
+                    spawn_local_task(n,
+                    "debug service",
+                        f
+                    )
+                });
+            }
+        }
         self.node.block_run(Some(ls), runtime);
     }
 
