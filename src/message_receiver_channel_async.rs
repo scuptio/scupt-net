@@ -5,26 +5,26 @@ use scupt_util::error_type::ET;
 use scupt_util::message::{Message, MsgTrait};
 use scupt_util::res::Res;
 use tokio::sync::Mutex;
-use crate::endpoint::Endpoint;
 
-use crate::message_channel::MessageChReceiver;
-use crate::message_receiver::{Receiver, ReceiverRR};
-use crate::message_sender::SenderResp;
+use crate::endpoint_async::EndpointAsync;
+use crate::message_channel::MessageChAsyncReceiver;
+use crate::message_receiver_async::{ReceiverAsync, ReceiverRRAsync};
+use crate::message_sender_async::SenderRespAsync;
 use crate::message_sender_endpoint::MessageSenderEndpoint;
 
-pub struct MessageReceiverChannel<M: MsgTrait + 'static> {
-    receiver: Arc<Mutex<MessageChReceiver<(Message<M>, Endpoint)>>>,
+pub struct MessageReceiverChannelAsync<M: MsgTrait + 'static> {
+    receiver: Arc<Mutex<MessageChAsyncReceiver<(Message<M>, Arc<dyn EndpointAsync<M>>)>>>,
 }
 
-impl<M: MsgTrait + 'static> MessageReceiverChannel<M> {
-    pub(crate) fn new(receiver: Arc<Mutex<MessageChReceiver<(Message<M>, Endpoint)>>>) -> Self {
+impl<M: MsgTrait + 'static> MessageReceiverChannelAsync<M> {
+    pub fn new(receiver: Arc<Mutex<MessageChAsyncReceiver<(Message<M>, Arc<dyn EndpointAsync<M>>)>>>) -> Self {
         Self {
             receiver
         }
     }
 }
 
-impl<M: MsgTrait + 'static> Clone for MessageReceiverChannel<M> {
+impl<M: MsgTrait + 'static> Clone for MessageReceiverChannelAsync<M> {
     fn clone(&self) -> Self {
         Self {
             receiver: self.receiver.clone(),
@@ -33,7 +33,7 @@ impl<M: MsgTrait + 'static> Clone for MessageReceiverChannel<M> {
 }
 
 #[async_trait]
-impl<M: MsgTrait + 'static> Receiver<M> for MessageReceiverChannel<M> {
+impl<M: MsgTrait + 'static> ReceiverAsync<M> for MessageReceiverChannelAsync<M> {
     async fn receive(&self) -> Res<Message<M>> {
         let mut guard = self.receiver.lock().await;
         let opt = guard.recv().await;
@@ -48,14 +48,15 @@ impl<M: MsgTrait + 'static> Receiver<M> for MessageReceiverChannel<M> {
 }
 
 #[async_trait]
-impl<M: MsgTrait + 'static> ReceiverRR<M> for MessageReceiverChannel<M> {
-    async fn receive(&self) -> Res<(Message<M>, Arc<dyn SenderResp<M>>)> {
+impl<M: MsgTrait + 'static> ReceiverRRAsync<M> for MessageReceiverChannelAsync<M> {
+    async fn receive(&self) -> Res<(Message<M>, Arc<dyn SenderRespAsync<M>>)> {
         let mut guard = self.receiver.lock().await;
         let opt = guard.recv().await;
         match opt {
             Some((message, ep)) => {
                 Ok((message,
-                    Arc::new(MessageSenderEndpoint::new(ep)))) }
+                    Arc::new(MessageSenderEndpoint::new(ep))))
+            }
             None => {
                 // the sender is closed
                 Err(ET::EOF)

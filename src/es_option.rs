@@ -1,18 +1,5 @@
-use std::net::SocketAddr;
-
-use async_trait::async_trait;
-use scupt_util::node_id::NID;
-use scupt_util::res::Res;
-
-use crate::endpoint::Endpoint;
-
 pub struct ESOption {
     no_wait: bool,
-}
-
-pub struct ESConnectOption {
-    no_wait: bool,
-    return_endpoint: bool,
 }
 
 pub type ESStopOpt = ESOption;
@@ -20,15 +7,6 @@ pub type ESServeOpt = ESOption;
 pub type ESConnectOpt = ESConnectOption;
 
 pub type ESSignalOpt = ESOption;
-
-#[async_trait]
-pub trait EventSink: Sync + Send {
-    async fn stop(&self, opt: ESStopOpt) -> Res<()>;
-
-    async fn serve(&self, addr: SocketAddr, opt: ESServeOpt) -> Res<()>;
-
-    async fn connect(&self, node_id: NID, address: SocketAddr, opt: ESConnectOpt) -> Res<Option<Endpoint>>;
-}
 
 impl ESOption {
     pub fn new() -> Self {
@@ -83,9 +61,13 @@ impl Default for ESOption {
     }
 }
 
+pub struct ESConnectOption {
+    no_wait: bool,
+    return_endpoint: bool,
+}
+
 impl Default for ESConnectOption {
     fn default() -> Self {
         Self::new()
     }
 }
-

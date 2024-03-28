@@ -5,6 +5,7 @@ use tokio::sync::mpsc;
 use tracing::trace;
 
 use crate::event::NetEvent;
+use crate::task_trace;
 
 type SyncMutex<T> = std::sync::Mutex<T>;
 
@@ -16,27 +17,35 @@ pub struct EventChannel<M: MsgTrait + 'static> {
 
 
 pub struct EventReceiver<M: MsgTrait + 'static> {
-    name: String,
+    _name: String,
     inner: mpsc::UnboundedReceiver<NetEvent<M>>,
 }
 
 impl<M: MsgTrait + 'static> Drop for EventReceiver<M> {
     fn drop(&mut self) {
-        trace!("drop receiver {}", self.name);
+        trace!("drop receiver {}", self._name);
     }
 }
 
 impl<M: MsgTrait + 'static> EventReceiver<M> {
     fn new(name: String, receiver: mpsc::UnboundedReceiver<NetEvent<M>>) -> Self {
         Self {
-            name,
+            _name: name,
             inner: receiver,
         }
     }
 
+    // used for debugging
+    #[allow(dead_code)]
+    pub fn name(&self) -> String {
+        self._name.clone()
+    }
+
+    #[async_backtrace::framed]
     pub async fn recv(&mut self) -> Res<NetEvent<M>> {
+        let _t = task_trace!();
         let opt = self.inner.recv().await;
-        trace!("{} receive event", self.name);
+        trace!("{} receive event", self._name);
         match opt {
             Some(e) => Ok(e),
             None => { Err(ET::NoneOption) }

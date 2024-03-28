@@ -12,52 +12,60 @@ use tokio::sync::Mutex;
 use tokio::task::LocalSet;
 use tokio::time::sleep;
 
-use crate::endpoint::Endpoint;
-use crate::event_sink::ESConnectOption;
+use crate::endpoint_async::EndpointAsync;
+use crate::es_option::ESConnectOption;
 use crate::handle_event::HandleEvent;
 use crate::node::Node;
 use crate::notifier::Notifier;
+use crate::task_trace;
 
 #[derive(Clone)]
-pub struct Client<M:MsgTrait + 'static> {
+pub struct Client<M: MsgTrait + 'static> {
     inner: Arc<ClientInner<M>>,
 }
-pub struct ClientInner<M:MsgTrait +'static> {
-    nid:NID,
-    addr:String,
-    node:Node<M, Handler>,
-    opt_endpoint: Mutex<Option<Endpoint>>,
+
+pub struct ClientInner<M: MsgTrait + 'static> {
+    nid: NID,
+    addr: String,
+    node: Node<M, Handler>,
+    opt_endpoint: Mutex<Option<Arc<dyn EndpointAsync<M>>>>,
 }
 
 
-struct Handler {
+struct Handler {}
 
-}
-
-impl <M:MsgTrait +'static> Client<M> {
-    pub fn new(node_id:NID, name:String, addr:String, opt_client: OptClient, notifier:Notifier) -> Res<Self> {
+impl<M: MsgTrait + 'static> Client<M> {
+    pub fn new(node_id: NID, name: String, addr: String, opt_client: OptClient, notifier: Notifier) -> Res<Self> {
         Ok(Self {
-            inner:Arc::new(ClientInner::new(node_id, name, addr, opt_client, notifier)?)
+            inner: Arc::new(ClientInner::new(node_id, name, addr, opt_client, notifier)?)
         })
     }
 
-    pub fn run(&self, local:&LocalSet) {
+    pub fn run(&self, local: &LocalSet) {
         self.inner.run(local);
     }
 
+    #[async_backtrace::framed]
     pub async fn is_connected(&self) -> bool {
+        let _t = task_trace!();
         self.inner.is_connected().await
     }
 
-    pub async fn connect(&self, opt:OptClientConnect) -> Res<()> {
+    #[async_backtrace::framed]
+    pub async fn connect(&self, opt: OptClientConnect) -> Res<()> {
+        let _t = task_trace!();
         self.inner.connect(opt).await
     }
 
-    pub async fn send(&self, message:Message<M>) -> Res<()> {
+    #[async_backtrace::framed]
+    pub async fn send(&self, message: Message<M>) -> Res<()> {
+        let _t = task_trace!();
         self.inner.send(message).await
     }
 
+    #[async_backtrace::framed]
     pub async fn recv(&self) -> Res<Message<M>> {
+        let _t = task_trace!();
         self.inner.recv().await
     }
 
@@ -77,11 +85,12 @@ impl Handler {
 }
 
 pub struct OptClient {
-    pub enable_testing:bool,
+    pub enable_testing: bool,
 }
+
 pub struct OptClientConnect {
-    pub retry_max:u64,
-    pub retry_wait_ms:u64
+    pub retry_max: u64,
+    pub retry_wait_ms: u64,
 }
 
 impl OptClientConnect {
@@ -99,8 +108,8 @@ impl Default for OptClientConnect {
     }
 }
 
-impl <M:MsgTrait +'static> ClientInner<M> {
-    pub fn new(node_id:NID, name:String, addr:String, opt:OptClient, notifier: Notifier) -> Res<Self> {
+impl<M: MsgTrait + 'static> ClientInner<M> {
+    pub fn new(node_id: NID, name: String, addr: String, opt: OptClient, notifier: Notifier) -> Res<Self> {
         let r = Self {
             nid: node_id.clone(),
             addr,
@@ -110,16 +119,20 @@ impl <M:MsgTrait +'static> ClientInner<M> {
         Ok(r)
     }
 
-    pub fn run(&self, local:&LocalSet) {
+    pub fn run(&self, local: &LocalSet) {
         self.node.run_local(local);
     }
 
+    #[async_backtrace::framed]
     pub async fn is_connected(&self) -> bool {
+        let _t = task_trace!();
         let g = self.opt_endpoint.lock().await;
         g.is_some()
     }
 
-    pub async fn connect(&self, opt:OptClientConnect) -> Res<()> {
+    #[async_backtrace::framed]
+    pub async fn connect(&self, opt: OptClientConnect) -> Res<()> {
+        let _t = task_trace!();
         let mut opt_ep = None;
         let mut n = opt.retry_max;
         while opt.retry_max == 0 || n > 0 {
@@ -147,21 +160,25 @@ impl <M:MsgTrait +'static> ClientInner<M> {
         Ok(())
     }
 
-    pub async fn send(&self, message:Message<M>) -> Res<()> {
+    #[async_backtrace::framed]
+    pub async fn send(&self, message: Message<M>) -> Res<()> {
+        let _t = task_trace!();
         let guard = self.opt_endpoint.lock().await;
         if let Some(e) = &(*guard) {
             e.send(message).await?;
-            return Ok(())
+            return Ok(());
         } else {
             Err(ET::NetNotConnected)
         }
     }
 
+    #[async_backtrace::framed]
     pub async fn recv(&self) -> Res<Message<M>> {
+        let _t = task_trace!();
         let guard = self.opt_endpoint.lock().await;
         if let Some(e) = &(*guard) {
             let m = e.recv().await?;
-            return Ok(m)
+            return Ok(m);
         } else {
             Err(ET::NetNotConnected)
         }
@@ -169,20 +186,16 @@ impl <M:MsgTrait +'static> ClientInner<M> {
 }
 
 #[async_trait]
-impl HandleEvent for Handler {
-    async fn on_accepted(&self, _: Endpoint) -> Res<()> {
+impl<M: MsgTrait + 'static> HandleEvent<M> for Handler {
+    async fn on_accepted(&self, _: Arc<dyn EndpointAsync<M>>) -> Res<()> {
         Ok(())
     }
 
-    async fn on_connected(&self, _: SocketAddr, _: Res<Endpoint>) -> Res<()> {
+    async fn on_connected(&self, _: SocketAddr, _: Res<Arc<dyn EndpointAsync<M>>>) -> Res<()> {
         Ok(())
     }
 
-    async fn on_error(&self, _: ET) {
+    async fn on_error(&self, _: ET) {}
 
-    }
-
-    async fn on_stop(&self) {
-
-    }
+    async fn on_stop(&self) {}
 }

@@ -1,23 +1,25 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use scupt_util::error_type::ET;
+use scupt_util::message::MsgTrait;
 use scupt_util::res::Res;
 
-use crate::endpoint::Endpoint;
+use crate::endpoint_async::EndpointAsync;
 
 #[async_trait]
-pub trait HandleEvent: Sync + Send {
+pub trait HandleEvent<M: MsgTrait + 'static>: Sync + Send {
     // server sink
     async fn on_accepted(
         &self,
-        endpoint: Endpoint) -> Res<()>;
+        endpoint: Arc<dyn EndpointAsync<M>>) -> Res<()>;
 
     // client sink
     async fn on_connected(
         &self,
         address: SocketAddr,
-        endpoint: Res<Endpoint>,
+        endpoint: Res<Arc<dyn EndpointAsync<M>>>,
     ) -> Res<()>;
 
     // error sink
@@ -38,15 +40,15 @@ impl Default for HandleEventDummy {
 }
 
 #[async_trait]
-impl HandleEvent for HandleEventDummy {
-    async fn on_accepted(&self, _: Endpoint) -> Res<()> {
+impl<M: MsgTrait> HandleEvent<M> for HandleEventDummy {
+    async fn on_accepted(&self, _: Arc<dyn EndpointAsync<M>>) -> Res<()> {
         Ok(())
     }
 
     async fn on_connected(
         &self,
         _: SocketAddr,
-        _: Res<Endpoint>,
+        _: Res<Arc<dyn EndpointAsync<M>>>,
     ) -> Res<()> {
         Ok(())
     }
