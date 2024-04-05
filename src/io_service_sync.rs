@@ -11,6 +11,8 @@ use crate::message_receiver_sync::ReceiverSync;
 use crate::message_sender_sync::SenderSync;
 
 pub trait IOServiceSync<M: MsgTrait>: Send + Sync {
+    fn local_run(&self, local_set:&LocalSet);
+
     fn block_run(&self, opt: Option<LocalSet>, runtime: Arc<Runtime>);
 
     fn node_id(&self) -> NID;
