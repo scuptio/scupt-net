@@ -199,6 +199,10 @@ impl<M: MsgTrait> IOService<M> {
 
 
 impl<M: MsgTrait> IOServiceAsync<M> for IOService<M> {
+    fn local_run(&self, local_set: &LocalSet) {
+        self.run_local(local_set)
+    }
+
     fn block_run(&self, opt: Option<LocalSet>, runtime: Arc<Runtime>) {
         self.run(opt, runtime);
     }
@@ -242,6 +246,10 @@ impl<M: MsgTrait> IOServiceAsync<M> for IOService<M> {
 
 
 impl<M: MsgTrait> IOServiceSync<M> for IOService<M> {
+    fn local_run(&self, local_set: &LocalSet) {
+        self.run_local(local_set)
+    }
+
     fn block_run(&self, opt: Option<LocalSet>, runtime: Arc<Runtime>) {
         self.run(opt, runtime);
     }
