@@ -1,6 +1,4 @@
-use core::slice::SlicePattern;
 use std::net::SocketAddr;
-
 use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
 use futures::stream::{SplitSink, SplitStream};
@@ -11,6 +9,7 @@ use scupt_util::message::{
     Message,
     MsgTrait,
 };
+use scupt_util::slice::Slice;
 use scupt_util::res::Res;
 use scupt_util::res_of::res_io;
 use tokio::net::TcpStream;
