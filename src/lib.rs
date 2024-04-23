@@ -1,5 +1,3 @@
-#![feature(slice_pattern)]
-
 pub mod io_service;
 pub mod event_sink_async;
 pub mod message_receiver_async;

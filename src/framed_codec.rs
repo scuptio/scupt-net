@@ -1,7 +1,8 @@
-use core::slice::SlicePattern;
+
 use std::io;
 
 use bytes::{Buf, BufMut, BytesMut};
+use scupt_util::slice::Slice;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::framed_header::{FramedHdr, FramedHdrRef};
