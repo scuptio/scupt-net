@@ -8,7 +8,7 @@ use scupt_util::message::MsgTrait;
 use scupt_util::node_id::NID;
 use scupt_util::res::Res;
 use tokio::sync::{mpsc, Mutex};
-use tracing::{Instrument, trace, trace_span};
+use tracing::{debug, Instrument, trace, trace_span};
 
 use crate::endpoint_async::EndpointAsync;
 use crate::event::{NetEvent, ResultSenderType};
@@ -175,7 +175,8 @@ impl<M: MsgTrait + 'static> _NodeContext<M> {
             }
             _ => {}
         }
-
+        let keys:Vec<NID> = self.out_connection_async.iter().map(|(x, _v)|{ x.clone() }).collect();
+        debug!("no such endpoint {}, keys {:?}", node_id, keys);
         Err(ET::NoSuchElement)
     }
 

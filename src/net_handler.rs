@@ -173,7 +173,6 @@ impl<M: MsgTrait> InnerNetHandler<M> {
             let index = (hash as usize) % guard.len();
             let n: Arc<MessageChSyncSender<(Message<M>, Arc<dyn EndpointSync<M>>)>> = guard[index].clone();
             let ep_sync = Arc::new(EndpointSyncImpl::new(ep));
-            EndpointSyncImpl::handle_loop(ep_sync.clone(), self.stop_notify.clone());
             let result = n.send((message, ep_sync));
             match result {
                 Ok(_) => { Ok(()) }
