@@ -125,10 +125,18 @@ macro_rules! task_backtrace {
     };
 }
 
+#[macro_export]
+macro_rules! this_task_id {
+    () => {
+        {
+            crate::task::this_task_id()
+        }
+    };
+}
 /// The task must create by `task::spawn_local_task`, or `task::spawn_task` to set `TASK_ID` value.
 /// if not, the `LocalKey::get` would raise such panic,
 ///     "cannot access a task-local storage value without setting it first"
-fn this_task_id() -> TaskID {
+pub fn this_task_id() -> TaskID {
     TASK_ID.get()
 }
 
